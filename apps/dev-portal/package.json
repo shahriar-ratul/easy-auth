@@ -1,0 +1,26 @@
+{
+  "name": "dev-portal",
+  "description": "Local control panel for this repo: service status, docker compose control, and the auth schema each combo's migration files produce when replayed through Postgres. Repo tooling — never copied to consumers by the CLI.",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -H 127.0.0.1 -p 8080",
+    "build": "next build",
+    "start": "next start -H 127.0.0.1 -p 8080",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@dbml/core": "^9.1.1",
+    "@softwaretechnik/dbml-renderer": "^1.0.31",
+    "next": "^16.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/react": "^19.2.9",
+    "@types/react-dom": "^19.2.4",
+    "typescript": "^7.0.2"
+  }
+}

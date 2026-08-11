@@ -1,0 +1,41 @@
+{
+  "name": "example-nestjs-drizzle-app",
+  "private": true,
+  "version": "0.0.0",
+  "description": "A fresh consumer project demonstrating `easy-auth add nestjs-drizzle` end to end.",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "seed": "tsx src/lib/auth/src/seed.ts"
+  },
+  "dependencies": {
+    "@casl/ability": "^7.0.1",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "@nestjs/swagger": "^11.4.6",
+    "argon2": "^0.45.1",
+    "drizzle-kit": "^0.31.10",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "jose": "^6.2.8",
+    "pg": "^8.23.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.2.0",
+    "@types/pg": "^8.21.0",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "argon2@0.45.1": true,
+    "fsevents@2.3.3": true,
+    "esbuild@0.18.20": true,
+    "esbuild@0.25.12": true,
+    "esbuild@0.28.2": true
+  }
+}

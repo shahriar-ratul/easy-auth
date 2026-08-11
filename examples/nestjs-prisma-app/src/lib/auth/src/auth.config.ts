@@ -1,0 +1,48 @@
+import type { PermissionCacheStore } from "./permission-cache.js";
+
+export const AUTH_CONFIG = Symbol("AUTH_CONFIG");
+
+export interface GoogleOAuthCredentials {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}
+
+export interface AppleOAuthCredentials {
+  clientId: string;
+  teamId: string;
+  keyId: string;
+  privateKey: string;
+  redirectUri: string;
+}
+
+export interface AuthConfig {
+  accessTokenTtlSeconds: number;
+  refreshTokenTtlSeconds: number;
+  // A session's absolute lifetime, never extended by refresh rotation — the cap that makes
+  // "log in again after N days" true regardless of activity. Enforced by `rotateRefreshToken`.
+  sessionTtlSeconds: number;
+  /** App name shown inside authenticator apps (issuer part of the otpauth:// URI). */
+  twoFactorIssuer: string;
+  oauthProviders: {
+    google?: GoogleOAuthCredentials;
+    apple?: AppleOAuthCredentials;
+  };
+  /** Wire your own mailer here — if unset, requestPasswordReset() just returns the token without emailing it. */
+  sendPasswordResetEmail?: (email: string, token: string) => Promise<void>;
+  // Safety net, not the invalidation mechanism — correctness comes from the version counters in
+  // permission-cache.ts. Set to 0 to resolve from the database on every request.
+  permissionCacheTtlSeconds: number;
+  // Defaults to an in-process Map; pass a Redis-backed PermissionCacheStore for multiple
+  // instances. Keys are namespaced `easyauth:authz:*`.
+  permissionCacheStore?: PermissionCacheStore;
+}
+
+export const defaultAuthConfig: AuthConfig = {
+  accessTokenTtlSeconds: 900,
+  permissionCacheTtlSeconds: 300,
+  refreshTokenTtlSeconds: 60 * 60 * 24 * 30,
+  sessionTtlSeconds: 60 * 60 * 24 * 30,
+  twoFactorIssuer: "easy-auth",
+  oauthProviders: {},
+};

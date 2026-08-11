@@ -1,0 +1,20 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/lib/auth/core/*": [
+        "../../core/*"
+      ]
+    }
+  },
+  "include": [
+    "shared/src",
+    "variants/*/src",
+    "test",
+    "shared/drizzle.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".variant"
+  ]
+}

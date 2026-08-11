@@ -1,0 +1,19 @@
+{
+  "name": "@easy-auth/auth-client",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Shared, framework-agnostic auth API client for the easy-auth backend. Used by all 4 client apps (admin-nextjs, admin-react, mobile-expo, mobile-bare-rn) — the auth flow and API contract are identical across them, only the injected TokenStorage adapter differs per platform (cookies-next on web, AsyncStorage on mobile).",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

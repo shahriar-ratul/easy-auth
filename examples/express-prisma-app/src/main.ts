@@ -1,0 +1,8 @@
+import "dotenv/config";
+import { createAuthApp } from "./lib/auth/src/create-auth-app.js";
+
+const app = createAuthApp();
+const port = Number(process.env["PORT"] ?? 3003);
+app.listen(port, () => {
+  console.log(`example-express-prisma-app listening on http://localhost:${port}`);
+});

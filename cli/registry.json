@@ -1,0 +1,112 @@
+{
+  "core": {
+    "dir": "core",
+    "peerDependencies": ["argon2", "jose"]
+  },
+  "variants": {
+    "base": {
+      "flag": null,
+      "description": "Roles and permissions are global to the deployment. The default."
+    },
+    "workspaces": {
+      "flag": "--workspaces",
+      "description": "Users belong to workspaces and hold different roles in each. Workspace-scoped requests carry an X-Workspace-Id header."
+    }
+  },
+  "combos": {
+    "nestjs-prisma": {
+      "dir": "combos/nestjs-prisma",
+      "sharedDir": "shared",
+      "variantsDir": "variants",
+      "variants": ["base", "workspaces"],
+      "peerDependencies": ["@nestjs/common", "@nestjs/core", "@nestjs/platform-express", "@nestjs/swagger", "reflect-metadata", "rxjs", "express", "@prisma/client", "@prisma/adapter-pg", "prisma", "@casl/ability"],
+      "postInstall": [
+        "Set DATABASE_URL in .env (see .env.example)",
+        "Set AUTH_JWT_SECRET in .env — a base64-encoded 256-bit (or longer) secret, e.g.: openssl rand -base64 32. The app refuses to start without it; there is no default and nothing is generated for you. Changing it invalidates every outstanding token.",
+        "Run: npx prisma generate",
+        "Run: npx prisma migrate deploy",
+        "Seed RBAC: add \"seed\": \"tsx src/lib/auth/src/seed.ts\" to your package.json scripts (adjust the path if you installed elsewhere), then run: npm run seed — it is idempotent, and seeds the permission catalog and the default admin/member roles. Nothing is authorized until it has run at least once.",
+        "Optional: set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD before seeding to also create an initial admin user. Without them the seeder skips the admin rather than inventing a password.",
+        "Import AuthModule.forRoot({...}) into your root app module",
+        "Optional: wire SwaggerModule.setup('docs', app, document) in your main.ts to serve the OpenAPI spec this combo's controller is already decorated for — see examples/nestjs-prisma-app/src/main.ts for a working example"
+      ],
+      "variantPostInstall": {
+        "workspaces": [
+          "Workspace-scoped requests must send an X-Workspace-Id header — see WorkspaceController and authz.guard.ts",
+          "A user has no roles until they belong to a workspace: POST /workspaces makes the caller its first admin",
+          "Roles are scoped to a workspace here, so the seeder also creates the first one — set SEED_WORKSPACE_NAME to name it (defaults to \"Default workspace\")"
+        ]
+      }
+    },
+    "nestjs-drizzle": {
+      "dir": "combos/nestjs-drizzle",
+      "sharedDir": "shared",
+      "variantsDir": "variants",
+      "variants": ["base", "workspaces"],
+      "peerDependencies": ["@nestjs/common", "@nestjs/core", "@nestjs/platform-express", "@nestjs/swagger", "reflect-metadata", "rxjs", "express", "drizzle-orm", "pg", "drizzle-kit", "@casl/ability"],
+      "postInstall": [
+        "Set DATABASE_URL in .env (see .env.example)",
+        "Set AUTH_JWT_SECRET in .env — a base64-encoded 256-bit (or longer) secret, e.g.: openssl rand -base64 32. The app refuses to start without it; there is no default and nothing is generated for you. Changing it invalidates every outstanding token.",
+        "Run: (cd src/lib/auth && npx drizzle-kit migrate) — drizzle-kit resolves ./src/schema.ts and ./drizzle relative to the working directory, so it must run from the install directory (adjust the path if you installed elsewhere)",
+        "Seed RBAC: add \"seed\": \"tsx src/lib/auth/src/seed.ts\" to your package.json scripts (adjust the path if you installed elsewhere), then run: npm run seed — it is idempotent, and seeds the permission catalog and the default admin/member roles. Nothing is authorized until it has run at least once.",
+        "Optional: set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD before seeding to also create an initial admin user. Without them the seeder skips the admin rather than inventing a password.",
+        "Import AuthModule.forRoot({...}) into your root app module",
+        "Optional: wire SwaggerModule.setup('docs', app, document) in your main.ts to serve the OpenAPI spec this combo's controller is already decorated for — see examples/nestjs-drizzle-app/src/main.ts for a working example"
+      ],
+      "variantPostInstall": {
+        "workspaces": [
+          "Workspace-scoped requests must send an X-Workspace-Id header — see WorkspaceController and authz.guard.ts",
+          "A user has no roles until they belong to a workspace: POST /workspaces makes the caller its first admin",
+          "Roles are scoped to a workspace here, so the seeder also creates the first one — set SEED_WORKSPACE_NAME to name it (defaults to \"Default workspace\")"
+        ]
+      }
+    },
+    "express-prisma": {
+      "dir": "combos/express-prisma",
+      "sharedDir": "shared",
+      "variantsDir": "variants",
+      "variants": ["base", "workspaces"],
+      "peerDependencies": ["express", "@prisma/client", "@prisma/adapter-pg", "prisma", "swagger-ui-express", "@casl/ability"],
+      "postInstall": [
+        "Set DATABASE_URL in .env (see .env.example)",
+        "Set AUTH_JWT_SECRET in .env — a base64-encoded 256-bit (or longer) secret, e.g.: openssl rand -base64 32. The app refuses to start without it; there is no default and nothing is generated for you. Changing it invalidates every outstanding token.",
+        "Run: npx prisma generate",
+        "Run: npx prisma migrate deploy",
+        "Seed RBAC: add \"seed\": \"tsx src/lib/auth/src/seed.ts\" to your package.json scripts (adjust the path if you installed elsewhere), then run: npm run seed — it is idempotent, and seeds the permission catalog and the default admin/member roles. Nothing is authorized until it has run at least once.",
+        "Optional: set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD before seeding to also create an initial admin user. Without them the seeder skips the admin rather than inventing a password.",
+        "Call createAuthApp({...}) and mount or listen on the Express app it returns",
+        "The OpenAPI spec this combo hand-authors is already served at /docs and /docs-json — see examples/express-prisma-app/src/main.ts for a working example"
+      ],
+      "variantPostInstall": {
+        "workspaces": [
+          "Workspace-scoped requests must send an X-Workspace-Id header — see workspace.router.ts and authz.middleware.ts",
+          "A user has no roles until they belong to a workspace: POST /workspaces makes the caller its first admin",
+          "Roles are scoped to a workspace here, so the seeder also creates the first one — set SEED_WORKSPACE_NAME to name it (defaults to \"Default workspace\")"
+        ]
+      }
+    },
+    "express-drizzle": {
+      "dir": "combos/express-drizzle",
+      "sharedDir": "shared",
+      "variantsDir": "variants",
+      "variants": ["base", "workspaces"],
+      "peerDependencies": ["express", "drizzle-orm", "pg", "drizzle-kit", "swagger-ui-express", "@casl/ability"],
+      "postInstall": [
+        "Set DATABASE_URL in .env (see .env.example)",
+        "Set AUTH_JWT_SECRET in .env — a base64-encoded 256-bit (or longer) secret, e.g.: openssl rand -base64 32. The app refuses to start without it; there is no default and nothing is generated for you. Changing it invalidates every outstanding token.",
+        "Run: (cd src/lib/auth && npx drizzle-kit migrate) — drizzle-kit resolves ./src/schema.ts and ./drizzle relative to the working directory, so it must run from the install directory (adjust the path if you installed elsewhere)",
+        "Seed RBAC: add \"seed\": \"tsx src/lib/auth/src/seed.ts\" to your package.json scripts (adjust the path if you installed elsewhere), then run: npm run seed — it is idempotent, and seeds the permission catalog and the default admin/member roles. Nothing is authorized until it has run at least once.",
+        "Optional: set SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD before seeding to also create an initial admin user. Without them the seeder skips the admin rather than inventing a password.",
+        "Call createAuthApp({...}) and mount or listen on the Express app it returns",
+        "The OpenAPI spec this combo hand-authors is already served at /docs and /docs-json — see examples/express-drizzle-app/src/main.ts for a working example"
+      ],
+      "variantPostInstall": {
+        "workspaces": [
+          "Workspace-scoped requests must send an X-Workspace-Id header — see workspace.router.ts and authz.middleware.ts",
+          "A user has no roles until they belong to a workspace: POST /workspaces makes the caller its first admin",
+          "Roles are scoped to a workspace here, so the seeder also creates the first one — set SEED_WORKSPACE_NAME to name it (defaults to \"Default workspace\")"
+        ]
+      }
+    }
+  }
+}

@@ -1,0 +1,183 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_HOST_AUTH_METHOD: trust
+    # Not published to the host on purpose: avoids colliding with a developer's own
+    # Postgres already running on localhost:55432 for the non-Docker workflow (see README
+    # Prerequisites). Reachable only from other containers on the compose network, as
+    # `postgres:5432`.
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # --- base variant (roles/permissions global to the deployment), ports 3001-3004 ---
+
+  nestjs-prisma-app:
+    build:
+      context: .
+      dockerfile: examples/nestjs-prisma-app/Dockerfile
+    environment:
+      # Overrides the checked-in examples/nestjs-prisma-app/.env, which points at the
+      # host's localhost:55432 — dotenv (used by this app and by Prisma) never overwrites
+      # an already-set process env var, so this wins.
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_prisma?schema=public
+      PORT: "3001"
+    ports:
+      - "3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nestjs-drizzle-app:
+    build:
+      context: .
+      dockerfile: examples/nestjs-drizzle-app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_drizzle?schema=public
+      PORT: "3002"
+    ports:
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  express-prisma-app:
+    build:
+      context: .
+      dockerfile: examples/express-prisma-app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_express_prisma?schema=public
+      PORT: "3003"
+    ports:
+      - "3003:3003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  express-drizzle-app:
+    build:
+      context: .
+      dockerfile: examples/express-drizzle-app/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_express_drizzle?schema=public
+      PORT: "3004"
+    ports:
+      - "3004:3004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # --- workspaces variant (users belong to workspaces, X-Workspace-Id header), ports 3005-3008 ---
+
+  nestjs-prisma-app-workspaces:
+    build:
+      context: .
+      dockerfile: examples/nestjs-prisma-app-workspaces/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_prisma_workspaces?schema=public
+      PORT: "3005"
+    ports:
+      - "3005:3005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  nestjs-drizzle-app-workspaces:
+    build:
+      context: .
+      dockerfile: examples/nestjs-drizzle-app-workspaces/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_drizzle_workspaces?schema=public
+      PORT: "3006"
+    ports:
+      - "3006:3006"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  express-prisma-app-workspaces:
+    build:
+      context: .
+      dockerfile: examples/express-prisma-app-workspaces/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_express_prisma_workspaces?schema=public
+      PORT: "3007"
+    ports:
+      - "3007:3007"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  express-drizzle-app-workspaces:
+    build:
+      context: .
+      dockerfile: examples/express-drizzle-app-workspaces/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://postgres@postgres:5432/example_express_drizzle_workspaces?schema=public
+      PORT: "3008"
+    ports:
+      - "3008:3008"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # The dev portal is deliberately NOT a service here. It starts and stops these
+  # containers, so running it inside compose would mean it kills itself on "stop
+  # all" — and controlling Docker from a container would mean mounting the Docker
+  # socket, which effectively grants host root. It runs on the host instead:
+  #   pnpm portal   ->   http://localhost:8080
+
+  admin-nextjs:
+    build:
+      context: .
+      dockerfile: apps/admin-nextjs/Dockerfile
+    environment:
+      # Browser-facing: the browser runs on the host, not inside the compose network, so
+      # this must be the host-published port, not the internal service DNS name.
+      NEXT_PUBLIC_AUTH_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - nestjs-prisma-app
+
+  admin-react:
+    build:
+      context: .
+      dockerfile: apps/admin-react/Dockerfile
+    environment:
+      VITE_AUTH_API_URL: http://localhost:3001
+    ports:
+      - "5173:5173"
+    depends_on:
+      - nestjs-prisma-app
+
+  admin-nextjs-workspaces:
+    build:
+      context: .
+      dockerfile: apps/admin-nextjs-workspaces/Dockerfile
+    environment:
+      NEXT_PUBLIC_AUTH_API_URL: http://localhost:3005
+    ports:
+      - "3010:3010"
+    depends_on:
+      - nestjs-prisma-app-workspaces
+
+  admin-react-workspaces:
+    build:
+      context: .
+      dockerfile: apps/admin-react-workspaces/Dockerfile
+    environment:
+      VITE_AUTH_API_URL: http://localhost:3005
+    ports:
+      - "5174:5174"
+    depends_on:
+      - nestjs-prisma-app-workspaces
+
+volumes:
+  postgres-data:

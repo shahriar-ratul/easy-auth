@@ -1,0 +1,28 @@
+# Workspace-wide pattern (covers every app/package's node_modules, not enumerated by hand).
+**/node_modules
+
+.git
+**/.git
+
+# build output
+**/dist
+**/build
+**/.next
+**/.turbo
+**/generated
+**/*.tsbuildinfo
+
+# test/coverage
+**/coverage
+
+# logs
+**/*.log
+**/npm-debug.log*
+**/pnpm-debug.log*
+
+# OS/editor cruft
+**/.DS_Store
+
+# not part of the Docker deliverable
+plan
+.claude

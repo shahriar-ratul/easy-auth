@@ -1,0 +1,20 @@
+{
+  "name": "@easy-auth/core",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Framework/ORM-free auth core: token issuance, session policy, crypto, rate limiting. Copied verbatim into every combo by the CLI — never installed as a dependency by consumers.",
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "argon2": "^0.45.1",
+    "jose": "^6.2.8"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

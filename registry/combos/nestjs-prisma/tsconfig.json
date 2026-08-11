@@ -1,0 +1,21 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "paths": {
+      "@/lib/auth/core/*": [
+        "../../core/*"
+      ]
+    }
+  },
+  "include": [
+    "shared/src",
+    "variants/*/src",
+    "test",
+    "shared/prisma.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "**/generated",
+    ".variant"
+  ]
+}
