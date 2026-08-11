@@ -1,9 +1,10 @@
 import { type FormEvent, useCallback, useEffect, useState } from "react";
-import type { RoleSummary, UserSummary } from "@easy-auth/auth-client";
+import type { PermissionSummary, RoleSummary, UserSummary } from "@easy-auth/auth-client";
 import { AuthApiError, userIdOf } from "@easy-auth/auth-client";
 import { toast } from "sonner";
 import { PERMISSIONS, useAbility } from "@/lib/ability";
 import { authClient } from "@/lib/auth-client";
+import { PermissionGroupSelect } from "@/components/permission-group-select";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,6 +17,10 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return err instanceof AuthApiError ? err.message : fallback;
 }
 
+function sameSlugs(a: string[], b: string[]): boolean {
+  return JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+}
+
 /** The keys the backend's seeded `admin` role carries — offered as suggestions so an admin isn't guessing at spelling. */
 const CATALOG_HINT = Object.values(PERMISSIONS).join(", ");
 
@@ -25,10 +30,12 @@ export function RolesPage() {
   const canAssignRoles = ability.can(PERMISSIONS.rolesAssign, "permission");
   const canGrantPermissions = ability.can(PERMISSIONS.permissionsGrant, "permission");
   const canListUsers = ability.can(PERMISSIONS.usersRead, "permission");
+  const canReadPermissions = ability.can(PERMISSIONS.permissionsRead, "permission");
 
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [rolesLoading, setRolesLoading] = useState(true);
   const [users, setUsers] = useState<UserSummary[]>([]);
+  const [permissionCatalog, setPermissionCatalog] = useState<PermissionSummary[]>([]);
   const [editingRole, setEditingRole] = useState<RoleSummary | null>(null);
   const [deletingRole, setDeletingRole] = useState<RoleSummary | null>(null);
 
@@ -55,6 +62,14 @@ export function RolesPage() {
       .then((result) => setUsers(result.items))
       .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load users.")));
   }, [canListUsers]);
+
+  useEffect(() => {
+    if (!canReadPermissions) return;
+    authClient
+      .listPermissions({ activeOnly: true })
+      .then(setPermissionCatalog)
+      .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load the permission catalog.")));
+  }, [canReadPermissions]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -83,6 +98,7 @@ export function RolesPage() {
                     <TableHead>Display name</TableHead>
                     <TableHead>Default</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Permissions</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -97,6 +113,9 @@ export function RolesPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={role.isActive ? "success" : "destructive"}>{role.isActive ? "Active" : "Inactive"}</Badge>
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {role.permissions.length} permission{role.permissions.length === 1 ? "" : "s"}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
@@ -118,14 +137,21 @@ export function RolesPage() {
       ) : null}
 
       <div className="grid gap-6 md:grid-cols-2">
-        {canManageRoles ? <CreateRoleCard onCreated={(role) => setRoles((prev) => [role, ...prev])} /> : null}
-        {canManageRoles ? <AttachPermissionCard roles={roles} /> : null}
+        {canManageRoles ? (
+          <CreateRoleCard
+            permissionCatalog={permissionCatalog}
+            canReadPermissions={canReadPermissions}
+            onCreated={(role) => setRoles((prev) => [role, ...prev])}
+          />
+        ) : null}
         {canAssignRoles ? <AssignRoleCard users={users} /> : null}
         {canGrantPermissions ? <DirectPermissionCard users={users} /> : null}
       </div>
 
       <EditRoleDialog
         role={editingRole}
+        permissionCatalog={permissionCatalog}
+        canReadPermissions={canReadPermissions}
         onClose={() => setEditingRole(null)}
         onSaved={(role) => {
           setRoles((prev) => prev.map((r) => (r.id === role.id ? role : r)));
@@ -145,18 +171,35 @@ export function RolesPage() {
   );
 }
 
-function CreateRoleCard({ onCreated }: { onCreated: (role: RoleSummary) => void }) {
-  const [name, setName] = useState("");
+function CreateRoleCard({
+  permissionCatalog,
+  canReadPermissions,
+  onCreated,
+}: {
+  permissionCatalog: PermissionSummary[];
+  canReadPermissions: boolean;
+  onCreated: (role: RoleSummary) => void;
+}) {
+  const [slug, setSlug] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     setSubmitting(true);
     try {
-      const role = await authClient.createRole({ slug: name });
-      onCreated(role);
+      const role = await authClient.createRole({ slug, displayName: displayName || undefined, description: description || undefined });
+      if (selectedPermissions.length > 0) {
+        await Promise.all(selectedPermissions.map((permSlug) => authClient.attachPermissionToRole(role.id, permSlug)));
+      }
+      onCreated({ ...role, permissions: selectedPermissions });
       toast.success(`Role "${role.name}" created.`);
-      setName("");
+      setSlug("");
+      setDisplayName("");
+      setDescription("");
+      setSelectedPermissions([]);
     } catch (err) {
       toast.error(apiErrorMessage(err, "Couldn't create the role. Try a different slug."));
     } finally {
@@ -168,14 +211,28 @@ function CreateRoleCard({ onCreated }: { onCreated: (role: RoleSummary) => void 
     <Card>
       <CardHeader>
         <CardTitle className="text-base">Create role</CardTitle>
-        <CardDescription>A new role starts with no permissions — attach them below.</CardDescription>
+        <CardDescription>Pick the permissions this role grants right here — you can still change them later.</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="role-name">Role slug</Label>
-            <Input id="role-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. auditor" required />
+            <Label htmlFor="role-slug">Role slug</Label>
+            <Input id="role-slug" value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="e.g. auditor" required />
           </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="role-displayName">Display name</Label>
+            <Input id="role-displayName" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="e.g. Auditor" />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="role-description">Description</Label>
+            <Input id="role-description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+          {canReadPermissions ? (
+            <div className="flex flex-col gap-2">
+              <Label>Permissions</Label>
+              <PermissionGroupSelect permissions={permissionCatalog} selected={selectedPermissions} onChange={setSelectedPermissions} />
+            </div>
+          ) : null}
           <Button type="submit" disabled={submitting} className="self-start">
             {submitting ? "Creating…" : "Create role"}
           </Button>
@@ -187,16 +244,21 @@ function CreateRoleCard({ onCreated }: { onCreated: (role: RoleSummary) => void 
 
 function EditRoleDialog({
   role,
+  permissionCatalog,
+  canReadPermissions,
   onClose,
   onSaved,
 }: {
   role: RoleSummary | null;
+  permissionCatalog: PermissionSummary[];
+  canReadPermissions: boolean;
   onClose: () => void;
   onSaved: (role: RoleSummary) => void;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loadedFor, setLoadedFor] = useState<string | null>(null);
 
@@ -208,20 +270,34 @@ function EditRoleDialog({
     setDisplayName(role.displayName);
     setDescription("");
     setIsActive(role.isActive);
+    setSelectedPermissions(role.permissions);
   }
+
+  const unchanged =
+    role !== null &&
+    displayName === role.displayName &&
+    description === "" &&
+    isActive === role.isActive &&
+    sameSlugs(selectedPermissions, role.permissions);
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
     if (!role) return;
     setSubmitting(true);
     try {
-      const updated = await authClient.updateRole(role.id, {
-        displayName: displayName.trim() === "" ? undefined : displayName,
-        description: description.trim() === "" ? undefined : description,
-        isActive,
-      });
+      const toAttach = selectedPermissions.filter((slug) => !role.permissions.includes(slug));
+      const toDetach = role.permissions.filter((slug) => !selectedPermissions.includes(slug));
+      const [updated] = await Promise.all([
+        authClient.updateRole(role.id, {
+          displayName: displayName.trim() === "" ? undefined : displayName,
+          description: description.trim() === "" ? undefined : description,
+          isActive,
+        }),
+        ...toAttach.map((slug) => authClient.attachPermissionToRole(role.id, slug)),
+        ...toDetach.map((slug) => authClient.detachPermissionFromRole(role.id, slug)),
+      ]);
       toast.success(`Role "${updated.name}" updated.`);
-      onSaved(updated);
+      onSaved({ ...updated, permissions: selectedPermissions });
     } catch (err) {
       toast.error(apiErrorMessage(err, "Couldn't update the role. Try again."));
     } finally {
@@ -260,8 +336,14 @@ function EditRoleDialog({
           />
           <Label htmlFor="edit-role-isActive">Active</Label>
         </div>
+        {canReadPermissions ? (
+          <div className="flex flex-col gap-2">
+            <Label>Permissions</Label>
+            <PermissionGroupSelect permissions={permissionCatalog} selected={selectedPermissions} onChange={setSelectedPermissions} />
+          </div>
+        ) : null}
         <div className="flex gap-2">
-          <Button type="submit" disabled={submitting}>
+          <Button type="submit" disabled={submitting || unchanged}>
             {submitting ? "Saving…" : "Save"}
           </Button>
           <Button type="button" variant="outline" onClick={handleClose}>
@@ -316,72 +398,6 @@ function DeleteRoleDialog({
         </div>
       </div>
     </Dialog>
-  );
-}
-
-function AttachPermissionCard({ roles }: { roles: RoleSummary[] }) {
-  const [roleId, setRoleId] = useState("");
-  const [permission, setPermission] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setSubmitting(true);
-    try {
-      await authClient.attachPermissionToRole(roleId, permission);
-      toast.success(`Permission "${permission}" attached to the role.`);
-      setPermission("");
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Couldn't attach the permission. Check the role ID and permission key."));
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">Attach permission to role</CardTitle>
-        <CardDescription>Pick a role from the list above, or paste a role ID directly.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="role-id">Role ID</Label>
-            {roles.length > 0 ? (
-              <select
-                id="role-id"
-                value={roleId}
-                onChange={(e) => setRoleId(e.target.value)}
-                className="h-9 rounded-md border border-input bg-background px-3 text-sm shadow-xs"
-              >
-                <option value="">Select a role…</option>
-                {roles.map((role) => (
-                  <option key={role.id} value={role.id}>
-                    {role.name} ({role.id.slice(0, 8)})
-                  </option>
-                ))}
-              </select>
-            ) : null}
-            <Input placeholder="or paste a role ID" value={roleId} onChange={(e) => setRoleId(e.target.value)} required />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="permission-key">Permission key</Label>
-            <Input
-              id="permission-key"
-              value={permission}
-              onChange={(e) => setPermission(e.target.value)}
-              placeholder="e.g. audit-log:read"
-              required
-            />
-            <p className="text-xs text-muted-foreground">Catalog: {CATALOG_HINT}</p>
-          </div>
-          <Button type="submit" disabled={submitting} className="self-start">
-            {submitting ? "Attaching…" : "Attach permission"}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
   );
 }
 

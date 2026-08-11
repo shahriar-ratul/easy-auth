@@ -34,6 +34,11 @@ export async function bootstrap(port: number) {
         // short enough to stay realistic. See `renewingToken` in test/harness.ts for the other
         // half of the fix.
         accessTokenTtlSeconds: 300,
+        // The proof fires hundreds of requests in well under a minute — the production buckets
+        // (100/1s, 200/10s, 400/60s) would 429 it partway through. One generous bucket keeps the
+        // throttler guard on every request without ever tripping, so its wiring is exercised
+        // rather than switched off.
+        throttle: [{ name: "proof", ttl: 1_000, limit: 100_000 }],
         permissionCacheStore,
         sendPasswordResetEmail: async (email, token) => {
           capturedResetTokens.set(email, token);

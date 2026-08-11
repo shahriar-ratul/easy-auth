@@ -3,10 +3,22 @@ import {
   AuditLogListResult,
   AuthApiError,
   AuthTokens,
+  CountryListFilter,
+  CountryListResult,
+  CountrySummary,
+  CreateCountryInput,
+  CreateCustomerInput,
+  CreateLanguageInput,
   CreateRoleInput,
   CreateUserInput,
   CurrentUser,
+  CustomerListFilter,
+  CustomerListResult,
+  CustomerSummary,
   DefinePermissionInput,
+  LanguageListFilter,
+  LanguageListResult,
+  LanguageSummary,
   MemberRoles,
   PermissionListResult,
   PermissionSummary,
@@ -15,6 +27,9 @@ import {
   SessionSummary,
   TokenStorage,
   TwoFactorChallenge,
+  UpdateCountryInput,
+  UpdateCustomerInput,
+  UpdateLanguageInput,
   UpdateRoleInput,
   UpdateUserInput,
   UserListFilter,
@@ -274,8 +289,9 @@ export class AuthClient {
     await this.scopedRequest("DELETE", `/auth/admin/users/${encodeURIComponent(userId)}`, reason ? { reason } : undefined, scope);
   }
 
-  async listRoles(scope?: WorkspaceScope): Promise<RoleSummary[]> {
-    const result = await this.scopedRequest<{ roles: RoleSummary[] }>("GET", "/auth/admin/roles", undefined, scope);
+  /** `activeOnly` is what a role picker (Add user, Assign role) should pass — omit it for the Roles management page, which wants everything. */
+  async listRoles(filter: { activeOnly?: boolean } = {}, scope?: WorkspaceScope): Promise<RoleSummary[]> {
+    const result = await this.scopedRequest<{ roles: RoleSummary[] }>("GET", `/auth/admin/roles${queryString(filter)}`, undefined, scope);
     return result.roles;
   }
 
@@ -296,14 +312,19 @@ export class AuthClient {
     await this.scopedRequest("POST", `/auth/admin/roles/${encodeURIComponent(roleId)}/permissions`, { permission }, scope);
   }
 
+  async detachPermissionFromRole(roleId: string, permissionSlug: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/roles/${encodeURIComponent(roleId)}/permissions/${encodeURIComponent(permissionSlug)}/revoke`, undefined, scope);
+  }
+
   /**
    * The catalog itself is global on both variants; what is workspace-scoped is which roles/
    * memberships point at each row. Still sent through `scopedRequest`: on the workspaces variant
    * every `/auth/admin/*` route sits behind the same guard that requires `X-Workspace-Id`, even
-   * this one.
+   * this one. `activeOnly` is what a permission picker (Create/Edit Role) should pass — omit it
+   * for the Permissions management page, which wants everything.
    */
-  async listPermissions(scope?: WorkspaceScope): Promise<PermissionSummary[]> {
-    const result = await this.scopedRequest<PermissionListResult>("GET", "/auth/admin/permissions", undefined, scope);
+  async listPermissions(filter: { activeOnly?: boolean } = {}, scope?: WorkspaceScope): Promise<PermissionSummary[]> {
+    const result = await this.scopedRequest<PermissionListResult>("GET", `/auth/admin/permissions${queryString(filter)}`, undefined, scope);
     return result.permissions;
   }
 
@@ -335,6 +356,103 @@ export class AuthClient {
 
   async listAuditLog(filter: AuditLogListFilter = {}, scope?: WorkspaceScope): Promise<AuditLogListResult> {
     return this.scopedRequest<AuditLogListResult>("GET", `/auth/admin/audit-log${queryString(filter)}`, undefined, scope);
+  }
+
+  // ---- countries (base backend variant only) ----
+
+  /** `activeOnly` is what a country picker/dropdown should pass — omit it for the Countries management page, which wants everything. */
+  async listCountries(filter: CountryListFilter = {}, scope?: WorkspaceScope): Promise<CountryListResult> {
+    return this.scopedRequest<CountryListResult>("GET", `/auth/admin/countries${queryString(filter)}`, undefined, scope);
+  }
+
+  async createCountry(input: CreateCountryInput, scope?: WorkspaceScope): Promise<CountrySummary> {
+    return this.scopedRequest("POST", "/auth/admin/countries", input, scope);
+  }
+
+  async getCountry(countryId: string, scope?: WorkspaceScope): Promise<CountrySummary> {
+    return this.scopedRequest("GET", `/auth/admin/countries/${encodeURIComponent(countryId)}`, undefined, scope);
+  }
+
+  async updateCountry(countryId: string, input: UpdateCountryInput, scope?: WorkspaceScope): Promise<CountrySummary> {
+    return this.scopedRequest("PATCH", `/auth/admin/countries/${encodeURIComponent(countryId)}`, input, scope);
+  }
+
+  /** Soft-delete: the row stops appearing in listings but survives for audit purposes. */
+  async deleteCountry(countryId: string, reason?: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("DELETE", `/auth/admin/countries/${encodeURIComponent(countryId)}`, reason ? { reason } : undefined, scope);
+  }
+
+  async activateCountry(countryId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/countries/${encodeURIComponent(countryId)}/activate`, undefined, scope);
+  }
+
+  async deactivateCountry(countryId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/countries/${encodeURIComponent(countryId)}/deactivate`, undefined, scope);
+  }
+
+  // ---- languages (base backend variant only) ----
+
+  /** `activeOnly` is what a language picker/dropdown should pass — omit it for the Languages management page, which wants everything. */
+  async listLanguages(filter: LanguageListFilter = {}, scope?: WorkspaceScope): Promise<LanguageListResult> {
+    return this.scopedRequest<LanguageListResult>("GET", `/auth/admin/languages${queryString(filter)}`, undefined, scope);
+  }
+
+  async createLanguage(input: CreateLanguageInput, scope?: WorkspaceScope): Promise<LanguageSummary> {
+    return this.scopedRequest("POST", "/auth/admin/languages", input, scope);
+  }
+
+  async getLanguage(languageId: string, scope?: WorkspaceScope): Promise<LanguageSummary> {
+    return this.scopedRequest("GET", `/auth/admin/languages/${encodeURIComponent(languageId)}`, undefined, scope);
+  }
+
+  async updateLanguage(languageId: string, input: UpdateLanguageInput, scope?: WorkspaceScope): Promise<LanguageSummary> {
+    return this.scopedRequest("PATCH", `/auth/admin/languages/${encodeURIComponent(languageId)}`, input, scope);
+  }
+
+  /** Soft-delete: the row stops appearing in listings but survives for audit purposes. */
+  async deleteLanguage(languageId: string, reason?: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("DELETE", `/auth/admin/languages/${encodeURIComponent(languageId)}`, reason ? { reason } : undefined, scope);
+  }
+
+  async activateLanguage(languageId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/languages/${encodeURIComponent(languageId)}/activate`, undefined, scope);
+  }
+
+  async deactivateLanguage(languageId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/languages/${encodeURIComponent(languageId)}/deactivate`, undefined, scope);
+  }
+
+  // ---- customers (base backend variant only) ----
+  // End-users managed by admins — no login capability, and not related to the admin UserSummary above.
+
+  /** `activeOnly` is what a customer picker/dropdown should pass — omit it for the Customers management page, which wants everything. */
+  async listCustomers(filter: CustomerListFilter = {}, scope?: WorkspaceScope): Promise<CustomerListResult> {
+    return this.scopedRequest<CustomerListResult>("GET", `/auth/admin/customers${queryString(filter)}`, undefined, scope);
+  }
+
+  async createCustomer(input: CreateCustomerInput, scope?: WorkspaceScope): Promise<CustomerSummary> {
+    return this.scopedRequest("POST", "/auth/admin/customers", input, scope);
+  }
+
+  async getCustomer(customerId: string, scope?: WorkspaceScope): Promise<CustomerSummary> {
+    return this.scopedRequest("GET", `/auth/admin/customers/${encodeURIComponent(customerId)}`, undefined, scope);
+  }
+
+  async updateCustomer(customerId: string, input: UpdateCustomerInput, scope?: WorkspaceScope): Promise<CustomerSummary> {
+    return this.scopedRequest("PATCH", `/auth/admin/customers/${encodeURIComponent(customerId)}`, input, scope);
+  }
+
+  /** Soft-delete: the row stops appearing in listings but survives for audit purposes. */
+  async deleteCustomer(customerId: string, reason?: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("DELETE", `/auth/admin/customers/${encodeURIComponent(customerId)}`, reason ? { reason } : undefined, scope);
+  }
+
+  async activateCustomer(customerId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/customers/${encodeURIComponent(customerId)}/activate`, undefined, scope);
+  }
+
+  async deactivateCustomer(customerId: string, scope?: WorkspaceScope): Promise<void> {
+    await this.scopedRequest("POST", `/auth/admin/customers/${encodeURIComponent(customerId)}/deactivate`, undefined, scope);
   }
 
   // ---- transport ----

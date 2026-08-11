@@ -168,6 +168,12 @@ export const UserDetailPage = observer(function UserDetailPage() {
           ← Back to users
         </Link>
         <h1 className="mt-2 text-2xl font-semibold">{user?.email ?? "User"}</h1>
+        {user ? (
+          <p className="text-sm text-muted-foreground">
+            Last login: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"} · Created:{" "}
+            {new Date(user.createdAt).toLocaleDateString()}
+          </p>
+        ) : null}
       </div>
 
       {loading ? (

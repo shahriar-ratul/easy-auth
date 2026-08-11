@@ -1,6 +1,11 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { EyeIcon, EyeOffIcon } from "lucide-react";
+import { useState } from "react";
+import { useForm, type Control } from "react-hook-form";
+import { z } from "zod";
+import { FormErrorAlert } from "@/components/form-error-alert";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,37 +16,89 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
-import { errorMessage } from "@/lib/error";
+import { errorMessages } from "@/lib/error";
+
+const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z.string().min(8, "Must be at least 8 characters"),
+    confirmPassword: z.string(),
+  })
+  .refine((data) => data.newPassword === data.confirmPassword, {
+    message: "Passwords don't match",
+    path: ["confirmPassword"],
+  });
+
+type ChangePasswordValues = z.infer<typeof changePasswordSchema>;
+
+const emptyValues: ChangePasswordValues = { currentPassword: "", newPassword: "", confirmPassword: "" };
+
+function PasswordField({
+  control,
+  name,
+  label,
+}: {
+  control: Control<ChangePasswordValues>;
+  name: keyof ChangePasswordValues;
+  label: string;
+}) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <FormField
+      control={control}
+      name={name}
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel>{label}</FormLabel>
+          <FormControl>
+            <div className="relative">
+              <Input type={visible ? "text" : "password"} className="pr-9" {...field} />
+              <button
+                type="button"
+                onClick={() => setVisible((v) => !v)}
+                className="absolute inset-y-0 right-2 flex items-center text-muted-foreground hover:text-foreground"
+                tabIndex={-1}
+              >
+                {visible ? <EyeOffIcon className="size-4" /> : <EyeIcon className="size-4" />}
+              </button>
+            </div>
+          </FormControl>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
+}
 
 export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<unknown>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const form = useForm<ChangePasswordValues>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: emptyValues,
+  });
+
   function reset() {
-    setCurrentPassword("");
-    setNewPassword("");
-    setError(null);
+    form.reset(emptyValues);
     setNotice(null);
+    setSubmitError(null);
   }
 
-  async function handleSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
+  async function handleSubmit(values: ChangePasswordValues) {
+    setSubmitError(null);
     setNotice(null);
     setSubmitting(true);
     try {
-      await authClient.changePassword({ currentPassword, newPassword });
+      await authClient.changePassword({ currentPassword: values.currentPassword, newPassword: values.newPassword });
       setNotice("Password changed. Every other session was signed out.");
-      setCurrentPassword("");
-      setNewPassword("");
+      form.reset(emptyValues);
     } catch (err) {
-      setError(errorMessage(err));
+      setSubmitError(err);
     } finally {
       setSubmitting(false);
     }
@@ -60,32 +117,23 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
           <DialogTitle>Change password</DialogTitle>
           <DialogDescription>Every other session gets signed out — this one doesn&apos;t.</DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          {error && <Alert variant="destructive">{error}</Alert>}
-          {notice && <Alert variant="success">{notice}</Alert>}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="currentPassword">Current password</Label>
-            <Input
-              id="currentPassword"
-              type="password"
-              required
-              value={currentPassword}
-              onChange={(e) => setCurrentPassword(e.target.value)}
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="newPassword">New password</Label>
-            <Input id="newPassword" type="password" required value={newPassword} onChange={(e) => setNewPassword(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Close
-            </Button>
-            <Button type="submit" disabled={submitting}>
-              {submitting ? "Changing…" : "Change password"}
-            </Button>
-          </DialogFooter>
-        </form>
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(handleSubmit)} className="flex flex-col gap-4">
+            <FormErrorAlert messages={submitError ? errorMessages(submitError) : null} />
+            {notice && <Alert variant="success">{notice}</Alert>}
+            <PasswordField control={form.control} name="currentPassword" label="Current password" />
+            <PasswordField control={form.control} name="newPassword" label="New password" />
+            <PasswordField control={form.control} name="confirmPassword" label="Confirm new password" />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Close
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "Changing…" : "Change password"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   );

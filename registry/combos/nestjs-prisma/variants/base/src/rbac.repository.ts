@@ -218,6 +218,7 @@ export class RbacRepository {
       displayName?: string;
       phone?: string;
       username?: string;
+      photo?: string;
       roles?: string[];
     },
     actorUserId: string | null,
@@ -234,6 +235,7 @@ export class RbacRepository {
         displayName: input.displayName,
         phone: input.phone,
         username: input.username,
+        photo: input.photo,
         createdBy: toIdOrNull(actorUserId),
       },
     });

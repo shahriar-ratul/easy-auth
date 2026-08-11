@@ -5,10 +5,10 @@ import { Toaster } from "@/components/ui/sonner";
 import { QueryProvider } from "@/lib/query-client";
 import { AppProviders } from "@/lib/stores/store-context";
 import "./globals.css";
-import { Geist } from "next/font/google";
+import { Bricolage_Grotesque } from "next/font/google";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
+const bricolageGrotesque = Bricolage_Grotesque({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "easy-auth Admin",
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
+    <html lang="en" className={cn("font-sans", bricolageGrotesque.variable)} suppressHydrationWarning>
       <body className="min-h-screen font-sans antialiased">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <QueryProvider>

@@ -11,7 +11,7 @@ import { PhotoUpload } from "@/components/photo-upload";
 import { RoleMultiSelect } from "@/components/role-multi-select";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -220,7 +220,13 @@ const UserDetailPage = observer(function UserDetailPage() {
         <>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{user.email}</CardTitle>
+              <div>
+                <CardTitle>{user.email}</CardTitle>
+                <CardDescription>
+                  Last login: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"} · Created:{" "}
+                  {new Date(user.createdAt).toLocaleDateString()}
+                </CardDescription>
+              </div>
               <div className="flex gap-1.5">
                 <Badge variant={user.isActive ? "success" : "destructive"}>{user.isActive ? "Active" : "Inactive"}</Badge>
                 {user.blocked && <Badge variant="destructive">Blocked</Badge>}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AuthApiError } from "@easy-auth/auth-client";
+import { AuthApiError, type AuditLogEntry } from "@easy-auth/auth-client";
+import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PERMISSIONS, useAbility } from "@/lib/ability";
 import { authClient } from "@/lib/auth-client";
@@ -8,17 +9,19 @@ import { authClient } from "@/lib/auth-client";
 /**
  * The console's front door. Cards are individually permission-gated so a low-privilege user sees
  * fewer of them rather than hitting a wall — that's also why this route isn't wrapped in
- * `RequirePermission` in App.tsx. No total user count is shown: the backend only exposes cursor
- * pagination for users, not a count endpoint, so that number would have to be fabricated.
+ * `RequirePermission` in App.tsx.
  */
 export function DashboardPage() {
   const ability = useAbility();
   const canReadUsers = ability.can(PERMISSIONS.usersRead, "permission");
   const canManageRoles = ability.can(PERMISSIONS.rolesManage, "permission");
   const canReadPermissions = ability.can(PERMISSIONS.permissionsRead, "permission");
+  const canReadAuditLog = ability.can(PERMISSIONS.auditLogRead, "permission");
 
+  const [userCount, setUserCount] = useState<number | null>(null);
   const [roleCount, setRoleCount] = useState<number | null>(null);
   const [permissionCount, setPermissionCount] = useState<number | null>(null);
+  const [recentActivity, setRecentActivity] = useState<AuditLogEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -26,6 +29,10 @@ export function DashboardPage() {
 
     async function load() {
       try {
+        if (canReadUsers) {
+          const users = await authClient.listUsers({ limit: 1 });
+          if (!cancelled) setUserCount(users.meta.total);
+        }
         if (canManageRoles) {
           const roles = await authClient.listRoles();
           if (!cancelled) setRoleCount(roles.length);
@@ -33,6 +40,10 @@ export function DashboardPage() {
         if (canReadPermissions) {
           const permissions = await authClient.listPermissions();
           if (!cancelled) setPermissionCount(permissions.length);
+        }
+        if (canReadAuditLog) {
+          const audit = await authClient.listAuditLog({ limit: 5 });
+          if (!cancelled) setRecentActivity(audit.items);
         }
       } catch (err) {
         if (!cancelled) {
@@ -47,7 +58,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [canManageRoles, canReadPermissions]);
+  }, [canReadUsers, canManageRoles, canReadPermissions, canReadAuditLog]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -59,6 +70,19 @@ export function DashboardPage() {
       {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {canReadUsers ? (
+          <Card>
+            <CardHeader>
+              <CardDescription>Users</CardDescription>
+              <CardTitle className="text-3xl">{userCount ?? "—"}</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              <Link to="/users" className="font-medium text-primary underline underline-offset-2">
+                On this deployment →
+              </Link>
+            </CardContent>
+          </Card>
+        ) : null}
         {canManageRoles ? (
           <Card>
             <CardHeader>
@@ -77,20 +101,38 @@ export function DashboardPage() {
             <CardContent className="text-sm text-muted-foreground">In the capability catalog</CardContent>
           </Card>
         ) : null}
-        {canReadUsers ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Users</CardTitle>
-              <CardDescription>Search, block, edit, or delete accounts on this deployment.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Link to="/users" className="text-sm font-medium text-primary underline underline-offset-2">
-                Go to Users →
-              </Link>
-            </CardContent>
-          </Card>
-        ) : null}
       </div>
+
+      {canReadAuditLog ? (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between">
+            <div>
+              <CardTitle>Recent activity</CardTitle>
+              <CardDescription>The latest entries from the audit log.</CardDescription>
+            </div>
+            <Link to="/audit-log" className="text-sm font-medium text-primary underline underline-offset-2">
+              View all →
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {recentActivity.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No activity yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {recentActivity.map((entry) => (
+                  <li key={entry.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 text-sm">
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline">{entry.action}</Badge>
+                      <span>{entry.name}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">{new Date(entry.createdAt).toLocaleString()}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
     </div>
   );
 }

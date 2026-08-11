@@ -6,6 +6,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AuthApiError, userIdOf, type CreateUserInput, type RoleSummary } from "@easy-auth/auth-client";
 import { toast } from "sonner";
 import { PermissionRequired } from "@/components/permission-required";
+import { PhotoUpload } from "@/components/photo-upload";
 import { RoleMultiSelect } from "@/components/role-multi-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -26,6 +27,7 @@ export default function NewUserPage() {
   const workspaceName = workspaces.activeWorkspace?.name ?? "this workspace";
 
   const [form, setForm] = useState(emptyForm);
+  const [photo, setPhoto] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [manualRoles, setManualRoles] = useState("");
@@ -34,7 +36,7 @@ export default function NewUserPage() {
   useEffect(() => {
     if (!canReadRoles) return;
     authClient
-      .listRoles()
+      .listRoles({ activeOnly: true })
       .then(setRoles)
       .catch((err) => toast.error(err instanceof AuthApiError ? err.message : "Couldn't load the role catalog."));
   }, [canReadRoles]);
@@ -59,6 +61,7 @@ export default function NewUserPage() {
         displayName: form.displayName || undefined,
         phone: form.phone || undefined,
         username: form.username || undefined,
+        photo: photo || undefined,
         roles: roleSlugs.length > 0 ? roleSlugs : undefined,
       };
       const user = await authClient.createUser(input);
@@ -82,6 +85,11 @@ export default function NewUserPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Photo</Label>
+              <PhotoUpload photo={photo} fallback="?" onChange={(next) => setPhoto(next)} />
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>

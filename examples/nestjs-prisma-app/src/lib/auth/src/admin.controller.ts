@@ -67,6 +67,7 @@ export class AdminController {
         displayName: optionalString(body.displayName),
         phone: optionalString(body.phone),
         username: optionalString(body.username),
+        photo: optionalString(body.photo),
         roles: Array.isArray(body.roles) ? body.roles.filter((role): role is string => typeof role === "string") : undefined,
       },
       req.auth!.sub,
@@ -145,9 +146,10 @@ export class AdminController {
     summary: "[admin] List the permission catalog",
     description: "Grouped and ordered for a permission matrix. This is the whole vocabulary of the deployment — there is nothing about authorization outside these rows.",
   })
+  @ApiQuery({ name: "activeOnly", required: false, type: Boolean, description: "Pass true for a picker/dropdown — false or omitted returns everything, active or not." })
   @ApiResponse({ status: 200, type: PermissionListResponseDto })
-  async listPermissions() {
-    return this.auth.listPermissions();
+  async listPermissions(@Query("activeOnly") activeOnly?: string) {
+    return this.auth.listPermissions(activeOnly === "true");
   }
 
   @Post("permissions")
@@ -179,9 +181,10 @@ export class AdminController {
   @Get("roles")
   @CheckAbility("roles:manage")
   @ApiOperation({ summary: "[admin] List the roles this deployment defines" })
+  @ApiQuery({ name: "activeOnly", required: false, type: Boolean, description: "Pass true for a picker/dropdown — false or omitted returns everything, active or not." })
   @ApiResponse({ status: 200, type: RoleListResponseDto })
-  async listRoles() {
-    return this.auth.listRoles();
+  async listRoles(@Query("activeOnly") activeOnly?: string) {
+    return this.auth.listRoles(activeOnly === "true");
   }
 
   @Post("roles")
@@ -242,6 +245,17 @@ export class AdminController {
   @ApiResponse({ status: 201, type: OkResponseDto })
   async attachPermissionToRole(@Param("roleId") roleId: string, @Body() body: Record<string, unknown>, @Req() req: Request) {
     await this.auth.attachPermissionToRole(roleId, requireString(body.permission, "permission"), req.auth!.sub);
+    return { ok: true };
+  }
+
+  @Post("roles/:roleId/permissions/:permissionSlug/revoke")
+  @CheckAbility("roles:manage")
+  @ApiOperation({ summary: "[admin] Detach a permission from a role" })
+  @ApiParam({ name: "roleId" })
+  @ApiParam({ name: "permissionSlug" })
+  @ApiResponse({ status: 201, type: OkResponseDto })
+  async detachPermissionFromRole(@Param("roleId") roleId: string, @Param("permissionSlug") permissionSlug: string) {
+    await this.auth.detachPermissionFromRole(roleId, permissionSlug);
     return { ok: true };
   }
 

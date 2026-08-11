@@ -80,6 +80,7 @@ export class AdminController {
         displayName: optionalString(body.displayName),
         phone: optionalString(body.phone),
         username: optionalString(body.username),
+        photo: optionalString(body.photo),
         roles: Array.isArray(body.roles) ? body.roles.filter((role): role is string => typeof role === "string") : undefined,
       },
       req.auth!.sub,

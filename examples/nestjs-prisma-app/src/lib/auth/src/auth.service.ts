@@ -295,6 +295,7 @@ export class AuthService {
       displayName?: string;
       phone?: string;
       username?: string;
+      photo?: string;
       roles?: string[];
     },
     actorUserId: string | null,
@@ -315,16 +316,16 @@ export class AuthService {
     await this.rbac.deleteUser(userId, actorUserId, reason);
   }
 
-  async listPermissions(): Promise<{ permissions: PermissionSummary[] }> {
-    return { permissions: await this.rbac.listPermissions() };
+  async listPermissions(activeOnly?: boolean): Promise<{ permissions: PermissionSummary[] }> {
+    return { permissions: await this.rbac.listPermissions(activeOnly) };
   }
 
   async definePermission(input: PermissionInput, actorUserId: string | null): Promise<PermissionSummary> {
     return this.rbac.upsertPermission(input, actorUserId);
   }
 
-  async listRoles(): Promise<{ roles: RoleSummary[] }> {
-    return { roles: await this.rbac.listRoles() };
+  async listRoles(activeOnly?: boolean): Promise<{ roles: RoleSummary[] }> {
+    return { roles: await this.rbac.listRoles(activeOnly) };
   }
 
   async createRole(
@@ -348,6 +349,10 @@ export class AuthService {
 
   async attachPermissionToRole(roleId: string, permissionSlug: string, actorUserId: string | null): Promise<void> {
     await this.rbac.attachPermissionToRole(roleId, permissionSlug, actorUserId);
+  }
+
+  async detachPermissionFromRole(roleId: string, permissionSlug: string): Promise<void> {
+    await this.rbac.detachPermissionFromRole(roleId, permissionSlug);
   }
 
   async assignRole(userId: string, roleSlug: string): Promise<void> {

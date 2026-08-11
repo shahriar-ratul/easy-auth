@@ -124,6 +124,9 @@ export class CreateUserDto {
   @ApiProperty({ type: String, required: false, description: "Unique across the deployment." })
   username?: string;
 
+  @ApiProperty({ type: String, required: false, description: "A data URI or an externally-hosted URL — stored as-is, never processed server-side." })
+  photo?: string;
+
   @ApiProperty({ type: [String], required: false, description: "Role slugs to assign. Defaults to whichever roles are flagged isDefault, same as a self-signup." })
   roles?: string[];
 }

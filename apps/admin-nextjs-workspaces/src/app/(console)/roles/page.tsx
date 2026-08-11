@@ -3,8 +3,9 @@
 import { useAbility } from "@casl/react";
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useState } from "react";
-import { AuthApiError, userIdOf, type RoleSummary, type UpdateRoleInput, type UserSummary } from "@easy-auth/auth-client";
+import { AuthApiError, userIdOf, type PermissionSummary, type RoleSummary, type UserSummary } from "@easy-auth/auth-client";
 import { toast } from "sonner";
+import { PermissionGroupSelect } from "@/components/permission-group-select";
 import { PermissionRequired } from "@/components/permission-required";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,10 @@ function apiErrorMessage(err: unknown, fallback: string): string {
   return err instanceof AuthApiError ? err.message : fallback;
 }
 
+function sameSlugs(a: string[], b: string[]): boolean {
+  return JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+}
+
 export default observer(function RolesPage() {
   const ability = useAbility<AppAbility>();
   const workspaces = useWorkspaceStore();
@@ -44,16 +49,14 @@ export default observer(function RolesPage() {
   const canManageRoles = hasPermission(ability, PERMISSIONS.rolesManage);
   const canAssignRoles = hasPermission(ability, PERMISSIONS.rolesAssign);
   const canGrantPermissions = hasPermission(ability, PERMISSIONS.permissionsGrant);
+  const canReadPermissions = hasPermission(ability, PERMISSIONS.permissionsRead);
   // The user pickers below are a convenience over `users:read`; without it you type an id.
   const canReadUsers = hasPermission(ability, PERMISSIONS.usersRead);
 
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [rolesLoading, setRolesLoading] = useState(false);
-
-  const [roleName, setRoleName] = useState("");
-  const [attachRoleId, setAttachRoleId] = useState("");
-  const [attachPermission, setAttachPermission] = useState("");
+  const [permissionCatalog, setPermissionCatalog] = useState<PermissionSummary[]>([]);
 
   const [assignUserId, setAssignUserId] = useState("");
   const [assignRoleName, setAssignRoleName] = useState("");
@@ -61,8 +64,17 @@ export default observer(function RolesPage() {
   const [grantUserId, setGrantUserId] = useState("");
   const [grantPermissionKey, setGrantPermissionKey] = useState("");
 
+  const [createSlug, setCreateSlug] = useState("");
+  const [createDisplayName, setCreateDisplayName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createPermissions, setCreatePermissions] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+
   const [editingRole, setEditingRole] = useState<RoleSummary | null>(null);
-  const [editForm, setEditForm] = useState<UpdateRoleInput>({});
+  const [editDisplayName, setEditDisplayName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editIsActive, setEditIsActive] = useState(true);
+  const [editPermissions, setEditPermissions] = useState<string[]>([]);
   const [editSaving, setEditSaving] = useState(false);
   const [deletingRole, setDeletingRole] = useState<RoleSummary | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
@@ -95,6 +107,14 @@ export default observer(function RolesPage() {
       .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load users.")));
   }, [canReadUsers, activeWorkspaceId]);
 
+  useEffect(() => {
+    if (!canReadPermissions || !activeWorkspaceId) return;
+    authClient
+      .listPermissions({ activeOnly: true })
+      .then(setPermissionCatalog)
+      .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load the permission catalog.")));
+  }, [canReadPermissions, activeWorkspaceId]);
+
   if (!canOpen) return <PermissionRequired permission={ROLES_SCREEN_PERMISSIONS} what="Roles & permissions" />;
 
   function report(fn: () => Promise<void>) {
@@ -107,24 +127,47 @@ export default observer(function RolesPage() {
     };
   }
 
-  const handleCreateRole = report(async () => {
-    const role = await authClient.createRole({ slug: roleName });
-    setRoles((prev) => [...prev, role]);
-    setRoleName("");
-    toast.success(`Role "${role.name}" created.`);
-  });
+  async function handleCreateRole(event: React.FormEvent) {
+    event.preventDefault();
+    setCreating(true);
+    try {
+      const role = await authClient.createRole({ slug: createSlug, displayName: createDisplayName || undefined, description: createDescription || undefined });
+      if (createPermissions.length > 0) {
+        await Promise.all(createPermissions.map((slug) => authClient.attachPermissionToRole(role.id, slug)));
+      }
+      setRoles((prev) => [...prev, { ...role, permissions: createPermissions }]);
+      setCreateSlug("");
+      setCreateDisplayName("");
+      setCreateDescription("");
+      setCreatePermissions([]);
+      toast.success(`Role "${role.name}" created.`);
+    } catch (err) {
+      toast.error(apiErrorMessage(err, "Couldn't create this role. Try again."));
+    } finally {
+      setCreating(false);
+    }
+  }
 
   function openEditRole(role: RoleSummary) {
     setEditingRole(role);
-    setEditForm({ displayName: role.displayName, description: undefined, isActive: role.isActive });
+    setEditDisplayName(role.displayName);
+    setEditDescription("");
+    setEditIsActive(role.isActive);
+    setEditPermissions(role.permissions);
   }
 
   async function handleUpdateRole() {
     if (!editingRole) return;
     setEditSaving(true);
     try {
-      const updated = await authClient.updateRole(editingRole.id, editForm);
-      setRoles((prev) => prev.map((r) => (r.id === updated.id ? updated : r)));
+      const toAttach = editPermissions.filter((slug) => !editingRole.permissions.includes(slug));
+      const toDetach = editingRole.permissions.filter((slug) => !editPermissions.includes(slug));
+      const [updated] = await Promise.all([
+        authClient.updateRole(editingRole.id, { displayName: editDisplayName, description: editDescription || null, isActive: editIsActive }),
+        ...toAttach.map((slug) => authClient.attachPermissionToRole(editingRole.id, slug)),
+        ...toDetach.map((slug) => authClient.detachPermissionFromRole(editingRole.id, slug)),
+      ]);
+      setRoles((prev) => prev.map((r) => (r.id === updated.id ? { ...updated, permissions: editPermissions } : r)));
       setEditingRole(null);
       toast.success(`Role "${updated.name}" updated.`);
     } catch (err) {
@@ -148,12 +191,6 @@ export default observer(function RolesPage() {
       setDeleteSaving(false);
     }
   }
-
-  const handleAttachPermission = report(async () => {
-    await authClient.attachPermissionToRole(attachRoleId, attachPermission);
-    toast.success(`Permission "${attachPermission}" attached to the role.`);
-    setAttachPermission("");
-  });
 
   const handleAssignRole = report(async () => {
     await authClient.assignRole(assignUserId, assignRoleName);
@@ -198,101 +235,71 @@ export default observer(function RolesPage() {
   return (
     <div className="flex flex-col gap-4">
       {canManageRoles && (
-        <>
-          <Card>
-            <CardHeader>
-              <CardTitle>Create role</CardTitle>
-              <CardDescription>
-                Roles belong to {workspaceName}. A new one carries no permissions until you attach some below.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="flex items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void handleCreateRole();
-                }}
-              >
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="roleName">Role name</Label>
-                  <Input id="roleName" required value={roleName} onChange={(e) => setRoleName(e.target.value)} placeholder="billing-manager" />
-                </div>
-                <Button type="submit">Create role</Button>
-              </form>
-
-              {rolesLoading && roles.length === 0 && <p className="mt-3 text-sm text-muted-foreground">Loading roles…</p>}
-
-              {roles.length > 0 && (
-                <ul className="mt-3 flex flex-col gap-2">
-                  {roles.map((role) => (
-                    <li key={role.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">{role.displayName}</span>
-                        <Badge variant="outline">{role.name}</Badge>
-                        {role.isDefault && <Badge variant="secondary">Default</Badge>}
-                        {!role.isActive && <Badge variant="destructive">Inactive</Badge>}
-                      </div>
-                      <div className="flex gap-1.5">
-                        <Button size="sm" variant="outline" onClick={() => openEditRole(role)}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="destructive" onClick={() => setDeletingRole(role)}>
-                          Delete
-                        </Button>
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Attach permission to role</CardTitle>
-              <CardDescription>Everyone holding the role gets the permission.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form
-                className="flex flex-wrap items-end gap-2"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void handleAttachPermission();
-                }}
-              >
+        <Card>
+          <CardHeader>
+            <CardTitle>Create role</CardTitle>
+            <CardDescription>
+              Roles belong to {workspaceName}. Pick the permissions this role grants right here — you can still change them later.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form className="flex flex-col gap-4" onSubmit={handleCreateRole}>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="attachRoleId">Role</Label>
-                  <Select name="attachRoleId" required value={attachRoleId} onValueChange={setAttachRoleId}>
-                    <SelectTrigger id="attachRoleId" className="w-48">
-                      <SelectValue placeholder="Select a role…" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {roles.map((role) => (
-                        <SelectItem key={role.id} value={role.id}>
-                          {role.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="createSlug">Slug</Label>
+                  <Input id="createSlug" required value={createSlug} onChange={(e) => setCreateSlug(e.target.value)} placeholder="billing-manager" />
                 </div>
-                <div className="flex flex-1 flex-col gap-1.5">
-                  <Label htmlFor="attachPermission">Permission key</Label>
-                  <Input
-                    id="attachPermission"
-                    required
-                    value={attachPermission}
-                    onChange={(e) => setAttachPermission(e.target.value)}
-                    placeholder="audit-log:read"
-                  />
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="createDisplayName">Display name</Label>
+                  <Input id="createDisplayName" value={createDisplayName} onChange={(e) => setCreateDisplayName(e.target.value)} placeholder="Billing manager" />
                 </div>
-                <Button type="submit" disabled={!attachRoleId}>
-                  Attach permission
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </>
+                <div className="flex flex-col gap-1.5 sm:col-span-2">
+                  <Label htmlFor="createDescription">Description</Label>
+                  <Input id="createDescription" value={createDescription} onChange={(e) => setCreateDescription(e.target.value)} />
+                </div>
+              </div>
+
+              {canReadPermissions && (
+                <div className="flex flex-col gap-2">
+                  <Label>Permissions</Label>
+                  <PermissionGroupSelect permissions={permissionCatalog} selected={createPermissions} onChange={setCreatePermissions} />
+                </div>
+              )}
+
+              <Button type="submit" disabled={creating} className="w-fit">
+                {creating ? "Creating…" : "Create role"}
+              </Button>
+            </form>
+
+            {rolesLoading && roles.length === 0 && <p className="mt-4 text-sm text-muted-foreground">Loading roles…</p>}
+
+            {roles.length > 0 && (
+              <ul className="mt-4 flex flex-col gap-2">
+                {roles.map((role) => (
+                  <li key={role.id} className="flex items-center justify-between gap-2 rounded-lg border border-border px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium">{role.displayName}</span>
+                      <Badge variant="outline">{role.name}</Badge>
+                      {role.isDefault && <Badge variant="secondary">Default</Badge>}
+                      {!role.isActive && <Badge variant="destructive">Inactive</Badge>}
+                      <span className="text-xs text-muted-foreground">
+                        {role.permissions.length} permission{role.permissions.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <Button size="sm" variant="outline" onClick={() => openEditRole(role)}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => setDeletingRole(role)}>
+                        Delete
+                      </Button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </CardContent>
+        </Card>
       )}
 
       <Card>
@@ -374,7 +381,7 @@ export default observer(function RolesPage() {
       </Card>
 
       <Dialog open={editingRole !== null} onOpenChange={(open) => !open && setEditingRole(null)}>
-        <DialogContent>
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>Edit role</DialogTitle>
             <DialogDescription>{editingRole?.name}</DialogDescription>
@@ -382,35 +389,37 @@ export default observer(function RolesPage() {
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="editDisplayName">Display name</Label>
-              <Input
-                id="editDisplayName"
-                value={editForm.displayName ?? ""}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, displayName: e.target.value }))}
-              />
+              <Input id="editDisplayName" value={editDisplayName} onChange={(e) => setEditDisplayName(e.target.value)} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="editDescription">Description</Label>
-              <Input
-                id="editDescription"
-                value={editForm.description ?? ""}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
-              />
+              <Input id="editDescription" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} />
             </div>
             <div className="flex items-center gap-2">
-              <input
-                id="editIsActive"
-                type="checkbox"
-                checked={editForm.isActive ?? true}
-                onChange={(e) => setEditForm((prev) => ({ ...prev, isActive: e.target.checked }))}
-              />
+              <input id="editIsActive" type="checkbox" checked={editIsActive} onChange={(e) => setEditIsActive(e.target.checked)} className="size-4 rounded border-input" />
               <Label htmlFor="editIsActive">Active</Label>
             </div>
+            {canReadPermissions && (
+              <div className="flex flex-col gap-2">
+                <Label>Permissions</Label>
+                <PermissionGroupSelect permissions={permissionCatalog} selected={editPermissions} onChange={setEditPermissions} />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingRole(null)} disabled={editSaving}>
               Cancel
             </Button>
-            <Button onClick={() => void handleUpdateRole()} disabled={editSaving}>
+            <Button
+              onClick={() => void handleUpdateRole()}
+              disabled={
+                editSaving ||
+                (editingRole !== null &&
+                  editDisplayName === editingRole.displayName &&
+                  editIsActive === editingRole.isActive &&
+                  sameSlugs(editPermissions, editingRole.permissions))
+              }
+            >
               {editSaving ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>

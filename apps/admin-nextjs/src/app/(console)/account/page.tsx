@@ -1,20 +1,28 @@
 "use client";
 
+import { zodResolver } from "@hookform/resolvers/zod";
 import { observer } from "mobx-react-lite";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
+import { useForm } from "react-hook-form";
 import { AuthApiError, type SessionSummary } from "@easy-auth/auth-client";
 import { toast } from "sonner";
+import { z } from "zod";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
+import { FormErrorAlert } from "@/components/form-error-alert";
 import { PhotoUpload } from "@/components/photo-upload";
 import { Alert } from "@/components/ui/alert";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { authClient } from "@/lib/auth-client";
+import { errorMessages } from "@/lib/error";
 import { useAuthStore } from "@/lib/stores/store-context";
 
 function apiErrorMessage(err: unknown, fallback: string): string {
@@ -32,9 +40,17 @@ function initialsOf(label: string): string {
   );
 }
 
-type ProfileForm = { firstName: string; lastName: string; displayName: string; phone: string; username: string };
+const profileSchema = z.object({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  displayName: z.string().optional(),
+  phone: z.string().optional(),
+  username: z.string().optional(),
+});
+type ProfileFormValues = z.infer<typeof profileSchema>;
+const emptyProfileValues: ProfileFormValues = { firstName: "", lastName: "", displayName: "", phone: "", username: "" };
 
-function toForm(user: { firstName: string | null; lastName: string | null; displayName: string | null; phone: string | null; username: string | null }): ProfileForm {
+function toForm(user: { firstName: string | null; lastName: string | null; displayName: string | null; phone: string | null; username: string | null }): ProfileFormValues {
   return {
     firstName: user.firstName ?? "",
     lastName: user.lastName ?? "",
@@ -48,8 +64,9 @@ export default observer(function AccountPage() {
   const store = useAuthStore();
   const user = store.currentUser;
 
-  const [form, setForm] = useState<ProfileForm | null>(user ? toForm(user) : null);
-  const [profileSaving, setProfileSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<unknown>(null);
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -60,6 +77,11 @@ export default observer(function AccountPage() {
   const [disableCode, setDisableCode] = useState("");
   const [twoFactorBusy, setTwoFactorBusy] = useState(false);
   const [logoutAllBusy, setLogoutAllBusy] = useState(false);
+
+  const form = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileSchema),
+    defaultValues: emptyProfileValues,
+  });
 
   useEffect(() => {
     store
@@ -123,8 +145,7 @@ export default observer(function AccountPage() {
 
   async function handlePhotoChange(photo: string | null) {
     try {
-      const updated = await authClient.updateProfile({ photo });
-      setForm(toForm(updated));
+      await authClient.updateProfile({ photo });
       await store.refreshCurrentUser();
       toast.success(photo ? "Photo updated." : "Photo removed.");
     } catch (err) {
@@ -132,70 +153,201 @@ export default observer(function AccountPage() {
     }
   }
 
-  async function handleProfileSave(event: React.FormEvent) {
-    event.preventDefault();
-    if (!form) return;
-    setProfileSaving(true);
+  function startEditing() {
+    if (!user) return;
+    form.reset(toForm(user));
+    setSubmitError(null);
+    setEditing(true);
+  }
+
+  function cancelEditing() {
+    if (user) form.reset(toForm(user));
+    setSubmitError(null);
+    setEditing(false);
+  }
+
+  async function handleProfileSave(values: ProfileFormValues) {
+    setSaving(true);
+    setSubmitError(null);
     try {
-      const updated = await authClient.updateProfile({
-        firstName: form.firstName || null,
-        lastName: form.lastName || null,
-        displayName: form.displayName || null,
-        phone: form.phone || null,
-        username: form.username || null,
+      await authClient.updateProfile({
+        firstName: values.firstName || null,
+        lastName: values.lastName || null,
+        displayName: values.displayName || null,
+        phone: values.phone || null,
+        username: values.username || null,
       });
-      setForm(toForm(updated));
       await store.refreshCurrentUser();
       toast.success("Profile saved.");
+      setEditing(false);
     } catch (err) {
+      setSubmitError(err);
       toast.error(apiErrorMessage(err, "Couldn't save this profile. Try again."));
     } finally {
-      setProfileSaving(false);
+      setSaving(false);
     }
   }
 
-  if (!user || !form) return null;
+  if (!user) return null;
+
+  const displayLabel = user.displayName || user.email;
 
   return (
     <div className="flex flex-col gap-4">
+      <Breadcrumb items={[{ title: "Profile", href: "/account" }]} />
+
       <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Your own info — no admin permission needed to change any of this.</CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Profile</CardTitle>
+            <CardDescription>Your own info — no admin permission needed to change any of this.</CardDescription>
+          </div>
+          <div className="flex shrink-0 gap-2">
+            <Button type="button" variant="outline" onClick={() => setChangePasswordOpen(true)}>
+              Change password
+            </Button>
+            {!editing && (
+              <Button type="button" onClick={startEditing}>
+                Edit
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
-          <PhotoUpload photo={user.photo} fallback={initialsOf(user.displayName || user.email)} onChange={handlePhotoChange} />
+          {editing ? (
+            <Form {...form}>
+              <form onSubmit={form.handleSubmit(handleProfileSave)} className="flex flex-col gap-4">
+                <FormErrorAlert messages={submitError ? errorMessages(submitError) : null} />
 
-          <form onSubmit={handleProfileSave} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="firstName">First name</Label>
-              <Input id="firstName" value={form.firstName} onChange={(e) => setForm({ ...form, firstName: e.target.value })} />
+                <PhotoUpload photo={user.photo} fallback={initialsOf(displayLabel)} onChange={handlePhotoChange} />
+
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First name</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last name</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="displayName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Display name</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="username"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Username</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone</FormLabel>
+                        <FormControl>
+                          <Input {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>
+                    {saving ? "Saving…" : "Save changes"}
+                  </Button>
+                  <Button type="button" variant="outline" disabled={saving} onClick={cancelEditing}>
+                    Cancel
+                  </Button>
+                </div>
+              </form>
+            </Form>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center gap-4">
+                <Avatar className="size-16 shrink-0">
+                  {user.photo && <AvatarImage src={user.photo} alt="" className="object-cover" />}
+                  <AvatarFallback className="text-base">{initialsOf(displayLabel)}</AvatarFallback>
+                </Avatar>
+                <div>
+                  <div className="text-base font-medium">{displayLabel}</div>
+                  <div className="text-sm text-muted-foreground">{user.email}</div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">First name</div>
+                  <div>{user.firstName || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Last name</div>
+                  <div>{user.lastName || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Display name</div>
+                  <div>{user.displayName || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Username</div>
+                  <div>{user.username || "—"}</div>
+                </div>
+                <div>
+                  <div className="text-xs text-muted-foreground">Phone</div>
+                  <div>{user.phone || "—"}</div>
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-1 text-xs text-muted-foreground">Roles</div>
+                <div className="flex flex-wrap gap-1">
+                  {user.roles.length === 0 && <span className="text-sm text-muted-foreground">No roles</span>}
+                  {user.roles.map((role) => (
+                    <Badge key={role} variant="outline">
+                      {role}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="lastName">Last name</Label>
-              <Input id="lastName" value={form.lastName} onChange={(e) => setForm({ ...form, lastName: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="displayName">Display name</Label>
-              <Input id="displayName" value={form.displayName} onChange={(e) => setForm({ ...form, displayName: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="username">Username</Label>
-              <Input id="username" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="phone">Phone</Label>
-              <Input id="phone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-            </div>
-            <div className="flex items-end gap-2">
-              <Button type="submit" disabled={profileSaving}>
-                {profileSaving ? "Saving…" : "Save changes"}
-              </Button>
-              <Button type="button" variant="outline" onClick={() => setChangePasswordOpen(true)}>
-                Change password
-              </Button>
-            </div>
-          </form>
+          )}
         </CardContent>
       </Card>
 

@@ -5,6 +5,7 @@ import { AuthApiError, userIdOf } from "@easy-auth/auth-client";
 import { toast } from "sonner";
 import { PERMISSIONS, useAbility } from "@/lib/ability";
 import { authClient } from "@/lib/auth-client";
+import { PhotoUpload } from "@/components/photo-upload";
 import { RoleMultiSelect } from "@/components/role-multi-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,6 +24,7 @@ export function AddUserPage() {
   const canReadRoles = ability.can(PERMISSIONS.rolesManage, "permission");
 
   const [form, setForm] = useState(emptyForm);
+  const [photo, setPhoto] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [manualRoles, setManualRoles] = useState("");
@@ -31,7 +33,7 @@ export function AddUserPage() {
   useEffect(() => {
     if (!canReadRoles) return;
     authClient
-      .listRoles()
+      .listRoles({ activeOnly: true })
       .then(setRoles)
       .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load the role catalog.")));
   }, [canReadRoles]);
@@ -54,6 +56,7 @@ export function AddUserPage() {
         displayName: form.displayName || undefined,
         phone: form.phone || undefined,
         username: form.username || undefined,
+        photo: photo || undefined,
         roles: roleSlugs.length > 0 ? roleSlugs : undefined,
       };
       const user = await authClient.createUser(input);
@@ -75,6 +78,11 @@ export function AddUserPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Photo</Label>
+              <PhotoUpload photo={photo} fallback="?" onChange={(next) => setPhoto(next)} />
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>

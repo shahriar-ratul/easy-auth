@@ -128,6 +128,7 @@ export class WorkspaceRepository {
       displayName?: string;
       phone?: string;
       username?: string;
+      photo?: string;
       roles?: string[];
     },
     actorUserId: string | null,
@@ -146,6 +147,7 @@ export class WorkspaceRepository {
         displayName: input.displayName,
         phone: input.phone,
         username: input.username,
+        photo: input.photo,
         createdBy: actorUserId ? toId(actorUserId) : null,
       },
     });

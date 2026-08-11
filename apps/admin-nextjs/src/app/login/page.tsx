@@ -1,59 +1,72 @@
 "use client";
 
-import { observer } from "mobx-react-lite";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { signIn } from "next-auth/react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState, type FormEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { errorMessage } from "@/lib/error";
-import { useAuthStore } from "@/lib/stores/store-context";
+import { DEFAULT_LOGIN_REDIRECT } from "@/routes";
 
-export default observer(function LoginPage() {
-  const store = useAuthStore();
+const credentialsSchema = z.object({
+  identifier: z.string().min(1, "Email, username, or phone is required"),
+  password: z.string().min(1, "Password is required"),
+});
+
+const twoFactorSchema = z.object({
+  code: z.string().min(1, "Authentication code is required"),
+});
+
+const TWO_FACTOR_PREFIX = "2fa_required:";
+
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const callbackUrl = searchParams.get("callbackUrl") ?? DEFAULT_LOGIN_REDIRECT;
 
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
-  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
 
-  async function handleCredentialsSubmit(event: FormEvent) {
-    event.preventDefault();
-    setError(null);
-    setSubmitting(true);
-    try {
-      const outcome = await store.login({ identifier, password });
-      if (outcome.status === "twoFactorRequired") {
-        setChallengeToken(outcome.challengeToken);
-      } else {
-        router.push("/");
+  const credentialsForm = useForm<z.infer<typeof credentialsSchema>>({
+    resolver: zodResolver(credentialsSchema),
+    defaultValues: { identifier: "", password: "" },
+  });
+
+  const twoFactorForm = useForm<z.infer<typeof twoFactorSchema>>({
+    resolver: zodResolver(twoFactorSchema),
+    defaultValues: { code: "" },
+  });
+
+  function handleResult(result: Awaited<ReturnType<typeof signIn>> | undefined) {
+    if (!result) return;
+    if (result.error) {
+      if (result.code?.startsWith(TWO_FACTOR_PREFIX)) {
+        setChallengeToken(result.code.slice(TWO_FACTOR_PREFIX.length));
+        setError(null);
+        return;
       }
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSubmitting(false);
+      setError(challengeToken ? "Invalid or expired code." : "Invalid credentials.");
+      return;
     }
+    router.push(callbackUrl);
+    router.refresh();
   }
 
-  async function handleTwoFactorSubmit(event: FormEvent) {
-    event.preventDefault();
+  async function onCredentialsSubmit(values: z.infer<typeof credentialsSchema>) {
+    setError(null);
+    handleResult(await signIn("credentials", { ...values, redirect: false }));
+  }
+
+  async function onTwoFactorSubmit(values: z.infer<typeof twoFactorSchema>) {
     if (!challengeToken) return;
     setError(null);
-    setSubmitting(true);
-    try {
-      await store.loginTwoFactor({ challengeToken, code });
-      router.push("/");
-    } catch (err) {
-      setError(errorMessage(err));
-    } finally {
-      setSubmitting(false);
-    }
+    handleResult(await signIn("credentials", { challengeToken, code: values.code, redirect: false }));
   }
 
   return (
@@ -69,39 +82,63 @@ export default observer(function LoginPage() {
           {error && <Alert variant="destructive">{error}</Alert>}
 
           {!challengeToken ? (
-            <form className="flex flex-col gap-4" onSubmit={handleCredentialsSubmit}>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="identifier">Email, username, or phone</Label>
-                <Input
-                  id="identifier"
-                  type="text"
-                  required
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="you@example.com"
+            <Form {...credentialsForm}>
+              <form className="flex flex-col gap-4" onSubmit={credentialsForm.handleSubmit(onCredentialsSubmit)}>
+                <FormField
+                  control={credentialsForm.control}
+                  name="identifier"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email, username, or phone</FormLabel>
+                      <FormControl>
+                        <Input type="text" placeholder="you@example.com" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
                 />
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="password">Password</Label>
-                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
-              </div>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Signing in…" : "Sign in"}
-              </Button>
-            </form>
+                <FormField
+                  control={credentialsForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input type="password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={credentialsForm.formState.isSubmitting}>
+                  {credentialsForm.formState.isSubmitting ? "Signing in…" : "Sign in"}
+                </Button>
+              </form>
+            </Form>
           ) : (
-            <form className="flex flex-col gap-4" onSubmit={handleTwoFactorSubmit}>
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="code">Authentication code</Label>
-                <Input id="code" required autoFocus value={code} onChange={(e) => setCode(e.target.value)} placeholder="123456" />
-              </div>
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Verifying…" : "Verify"}
-              </Button>
-              <Button type="button" variant="ghost" onClick={() => setChallengeToken(null)}>
-                Back
-              </Button>
-            </form>
+            <Form {...twoFactorForm}>
+              <form className="flex flex-col gap-4" onSubmit={twoFactorForm.handleSubmit(onTwoFactorSubmit)}>
+                <FormField
+                  control={twoFactorForm.control}
+                  name="code"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Authentication code</FormLabel>
+                      <FormControl>
+                        <Input placeholder="123456" autoFocus {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button type="submit" disabled={twoFactorForm.formState.isSubmitting}>
+                  {twoFactorForm.formState.isSubmitting ? "Verifying…" : "Verify"}
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setChallengeToken(null)}>
+                  Back
+                </Button>
+              </form>
+            </Form>
           )}
 
           <p className="text-center text-sm text-muted-foreground">
@@ -114,4 +151,12 @@ export default observer(function LoginPage() {
       </Card>
     </div>
   );
-});
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
+  );
+}

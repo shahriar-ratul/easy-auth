@@ -101,6 +101,8 @@ export interface RoleSummary {
   /** Given to every newly signed-up user (or, on the workspaces variant, every new membership). */
   isDefault: boolean;
   isActive: boolean;
+  /** Permission slugs currently attached to this role — see attachPermissionToRole/detachPermissionFromRole. */
+  permissions: string[];
 }
 
 export interface CreateRoleInput {
@@ -185,6 +187,7 @@ export interface CreateUserInput {
   displayName?: string;
   phone?: string;
   username?: string;
+  photo?: string;
   /** Defaults to whichever roles are flagged `isDefault`, same as a self-signup. */
   roles?: string[];
 }
@@ -314,6 +317,196 @@ export interface TokenStorage {
   get(): Promise<AuthTokens | null>;
   set(tokens: AuthTokens): Promise<void>;
   clear(): Promise<void>;
+}
+
+// ---- countries (base backend variant only) ----
+
+/** Every column the `Country` table has — there is no secret to withhold, unlike `UserSummary`. */
+export interface CountrySummary {
+  id: string;
+  uuid: string;
+  code: string;
+  name: string;
+  emoji: string;
+  phoneCode: string;
+  currency: string;
+  currencyName: string;
+  isoCode: string;
+  /** A data URI or an externally-hosted URL — stored as-is, never processed server-side. */
+  flag: string | null;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCountryInput {
+  code: string;
+  name: string;
+  emoji: string;
+  phoneCode: string;
+  currency: string;
+  currencyName: string;
+  isoCode: string;
+  flag?: string | null;
+  isActive?: boolean;
+}
+
+export interface UpdateCountryInput {
+  code?: string;
+  name?: string;
+  emoji?: string;
+  phoneCode?: string;
+  currency?: string;
+  currencyName?: string;
+  isoCode?: string;
+  flag?: string | null;
+  isActive?: boolean;
+}
+
+export interface CountryListFilter {
+  search?: string;
+  /** 1-indexed. Defaults to 1. */
+  page?: number;
+  /** Defaults to 25, capped at 100. */
+  limit?: number;
+  /** Pass true for a picker/dropdown — omitted returns everything, active or not. */
+  activeOnly?: boolean;
+}
+
+export interface CountryListResult {
+  items: CountrySummary[];
+  meta: PageMeta;
+}
+
+// ---- languages (base backend variant only) ----
+
+/** Every column the `Language` table has — there is no secret to withhold, unlike `UserSummary`. */
+export interface LanguageSummary {
+  id: string;
+  uuid: string;
+  code: string;
+  name: string;
+  nativeName: string;
+  direction: "ltr" | "rtl" | (string & {});
+  /** Given to a new deployment's default locale. */
+  isDefault: boolean;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLanguageInput {
+  code: string;
+  name: string;
+  nativeName: string;
+  /** Defaults to "ltr" when creating. */
+  direction?: "ltr" | "rtl";
+  isDefault?: boolean;
+  isActive?: boolean;
+}
+
+export interface UpdateLanguageInput {
+  code?: string;
+  name?: string;
+  nativeName?: string;
+  direction?: "ltr" | "rtl";
+  isDefault?: boolean;
+  isActive?: boolean;
+}
+
+export interface LanguageListFilter {
+  search?: string;
+  /** 1-indexed. Defaults to 1. */
+  page?: number;
+  /** Defaults to 25, capped at 100. */
+  limit?: number;
+  /** Pass true for a picker/dropdown — omitted returns everything, active or not. */
+  activeOnly?: boolean;
+}
+
+export interface LanguageListResult {
+  items: LanguageSummary[];
+  meta: PageMeta;
+}
+
+// ---- customers (base backend variant only) ----
+
+/**
+ * End-users managed by admins — no login capability, and not related to the RBAC `UserSummary`
+ * above. Every column the `Customer` table has — there is no login credential to withhold.
+ */
+export interface CustomerSummary {
+  id: string;
+  uuid: string;
+  firstName: string | null;
+  lastName: string | null;
+  /** Unique across the deployment. */
+  username: string | null;
+  email: string;
+  /** Unique across the deployment. */
+  phone: string | null;
+  dob: string | null;
+  gender: string | null;
+  joinedDate: string;
+  /** A data URI or an externally-hosted URL — stored as-is, never processed server-side. */
+  photo: string | null;
+  isEmailVerified: boolean;
+  isPhoneVerified: boolean;
+  isActive: boolean;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCustomerInput {
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  username?: string;
+  phone?: string;
+  dob?: string;
+  gender?: string;
+  /** Defaults to today when creating. */
+  joinedDate?: string;
+  photo?: string;
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  isActive?: boolean;
+}
+
+export interface UpdateCustomerInput {
+  email?: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  username?: string | null;
+  phone?: string | null;
+  dob?: string | null;
+  gender?: string | null;
+  joinedDate?: string;
+  photo?: string | null;
+  isEmailVerified?: boolean;
+  isPhoneVerified?: boolean;
+  isActive?: boolean;
+}
+
+export interface CustomerListFilter {
+  search?: string;
+  /** 1-indexed. Defaults to 1. */
+  page?: number;
+  /** Defaults to 25, capped at 100. */
+  limit?: number;
+  /** Pass true for a picker/dropdown — omitted returns everything, active or not. */
+  activeOnly?: boolean;
+}
+
+export interface CustomerListResult {
+  items: CustomerSummary[];
+  meta: PageMeta;
 }
 
 export class AuthApiError extends Error {

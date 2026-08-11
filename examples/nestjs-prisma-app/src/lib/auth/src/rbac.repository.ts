@@ -106,7 +106,11 @@ export interface RoleSummary {
   displayName: string;
   isDefault: boolean;
   isActive: boolean;
+  /** Permission slugs currently attached to this role — see attachPermissionToRole/detachPermissionFromRole. */
+  permissions: string[];
 }
+
+const ROLE_PERMISSIONS_INCLUDE = { permissions: { select: { permission: { select: { slug: true } } } } } as const;
 
 const PERMISSION_SELECT = {
   id: true,
@@ -214,6 +218,7 @@ export class RbacRepository {
       displayName?: string;
       phone?: string;
       username?: string;
+      photo?: string;
       roles?: string[];
     },
     actorUserId: string | null,
@@ -230,6 +235,7 @@ export class RbacRepository {
         displayName: input.displayName,
         phone: input.phone,
         username: input.username,
+        photo: input.photo,
         createdBy: toIdOrNull(actorUserId),
       },
     });
@@ -286,11 +292,11 @@ export class RbacRepository {
     const role = await this.prisma.role.update({
       where: { id: roleIdBig },
       data: { ...input, updatedBy: toIdOrNull(actorUserId) },
-      select: ROLE_SELECT,
+      select: { ...ROLE_SELECT, ...ROLE_PERMISSIONS_INCLUDE },
     });
     // Renaming/deactivating changes what every holder resolves to.
     await this.cache.invalidatePolicy();
-    return { ...role, id: role.id.toString() };
+    return { ...role, id: role.id.toString(), permissions: role.permissions.map((p) => p.permission.slug).sort() };
   }
 
   // Soft-delete. The `role_user`/`permission_role` rows pointing at it are left in place — a
@@ -307,9 +313,10 @@ export class RbacRepository {
     await this.cache.invalidatePolicy();
   }
 
-  async listPermissions(): Promise<PermissionSummary[]> {
+  /** `activeOnly` is what a permission picker (Create/Edit Role) passes — the admin management list itself wants everything, active or not. */
+  async listPermissions(activeOnly?: boolean): Promise<PermissionSummary[]> {
     const rows = await this.prisma.permission.findMany({
-      where: { isDeleted: false },
+      where: { isDeleted: false, isActive: activeOnly ? true : undefined },
       select: PERMISSION_SELECT,
       orderBy: [{ groupOrder: "asc" }, { group: "asc" }, { order: "asc" }, { slug: "asc" }],
     });
@@ -347,9 +354,14 @@ export class RbacRepository {
     return { ...permission, id: permission.id.toString() };
   }
 
-  async listRoles(): Promise<RoleSummary[]> {
-    const rows = await this.prisma.role.findMany({ where: { isDeleted: false }, select: ROLE_SELECT, orderBy: [{ order: "asc" }, { slug: "asc" }] });
-    return rows.map((row) => ({ ...row, id: row.id.toString() }));
+  /** `activeOnly` is what a role/permission picker (Add User, Create/Edit Role) passes — the admin management list itself wants everything, active or not. */
+  async listRoles(activeOnly?: boolean): Promise<RoleSummary[]> {
+    const rows = await this.prisma.role.findMany({
+      where: { isDeleted: false, isActive: activeOnly ? true : undefined },
+      select: { ...ROLE_SELECT, ...ROLE_PERMISSIONS_INCLUDE },
+      orderBy: [{ order: "asc" }, { slug: "asc" }],
+    });
+    return rows.map((row) => ({ ...row, id: row.id.toString(), permissions: row.permissions.map((p) => p.permission.slug).sort() }));
   }
 
   async createRole(
@@ -367,7 +379,7 @@ export class RbacRepository {
       },
       select: ROLE_SELECT,
     });
-    return { ...role, id: role.id.toString() };
+    return { ...role, id: role.id.toString(), permissions: [] };
   }
 
   async attachPermissionToRole(roleId: string, permissionSlug: string, actorUserId: string | null): Promise<void> {
@@ -381,6 +393,18 @@ export class RbacRepository {
       create: { permissionId: permission.id, roleId: roleIdBig },
       update: {},
     });
+    await this.cache.invalidatePolicy(); // everyone holding this role is affected
+  }
+
+  async detachPermissionFromRole(roleId: string, permissionSlug: string): Promise<void> {
+    const roleIdBig = toId(roleId);
+    const role = await this.prisma.role.findUnique({ where: { id: roleIdBig, isDeleted: false }, select: { id: true } });
+    if (!role) throw new NotFoundException("role not found");
+
+    const permission = await this.prisma.permission.findUnique({ where: { slug: permissionSlug }, select: { id: true } });
+    if (!permission) throw new NotFoundException("permission not found");
+
+    await this.prisma.permissionRole.deleteMany({ where: { roleId: roleIdBig, permissionId: permission.id } });
     await this.cache.invalidatePolicy(); // everyone holding this role is affected
   }
 

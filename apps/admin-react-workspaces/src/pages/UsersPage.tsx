@@ -183,6 +183,17 @@ export const UsersPage = observer(function UsersPage() {
         },
       },
       {
+        id: "lastLogin",
+        header: "Last login",
+        accessorFn: (user) => user.lastLogin ?? "",
+        cell: ({ row }) =>
+          row.original.lastLogin ? (
+            <span className="text-xs text-muted-foreground">{new Date(row.original.lastLogin).toLocaleString()}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">Never</span>
+          ),
+      },
+      {
         id: "created",
         header: "Created",
         accessorFn: (user) => user.createdAt,
@@ -337,6 +348,7 @@ export const UsersPage = observer(function UsersPage() {
                 { header: "User", skeletonType: "avatar" },
                 { header: "Roles", skeletonType: "badge", skeletonCount: 2 },
                 { header: "Status", width: "w-[100px]", skeletonType: "button" },
+                { header: "Last login", skeletonType: "text", skeletonWidth: "w-32" },
                 { header: "Created", skeletonType: "text", skeletonWidth: "w-24" },
                 { header: "Updated", skeletonType: "text", skeletonWidth: "w-24" },
                 { header: "Actions", width: "w-[150px]", skeletonType: "actions", skeletonCount: 2 },

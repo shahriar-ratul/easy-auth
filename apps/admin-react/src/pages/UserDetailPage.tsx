@@ -192,7 +192,16 @@ export const UserDetailPage = observer(function UserDetailPage() {
           ← Back to users
         </Link>
         <h1 className="mt-1 text-2xl font-semibold">{user?.email ?? "User"}</h1>
-        <p className="text-sm text-muted-foreground">Profile, status, and account actions for this user.</p>
+        <p className="text-sm text-muted-foreground">
+          {user ? (
+            <>
+              Last login: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"} · Created:{" "}
+              {new Date(user.createdAt).toLocaleDateString()}
+            </>
+          ) : (
+            "Profile, status, and account actions for this user."
+          )}
+        </p>
       </div>
 
       {loading ? (

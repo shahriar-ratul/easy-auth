@@ -302,16 +302,16 @@ export class AuthService {
   }
 
   // The catalog is global; what is workspace-scoped is which of this workspace's roles point at it.
-  async listPermissions(): Promise<{ permissions: PermissionSummary[] }> {
-    return { permissions: await this.rbac.listPermissions() };
+  async listPermissions(activeOnly?: boolean): Promise<{ permissions: PermissionSummary[] }> {
+    return { permissions: await this.rbac.listPermissions(activeOnly) };
   }
 
   async definePermission(input: PermissionInput, actorUserId: string | null): Promise<PermissionSummary> {
     return this.rbac.upsertPermission(input, actorUserId);
   }
 
-  async listRoles(ctx: AuthzContext): Promise<{ roles: RoleSummary[] }> {
-    return { roles: await this.rbac.listRoles(ctx.workspaceId) };
+  async listRoles(ctx: AuthzContext, activeOnly?: boolean): Promise<{ roles: RoleSummary[] }> {
+    return { roles: await this.rbac.listRoles(ctx.workspaceId, activeOnly) };
   }
 
   async createRole(
@@ -337,6 +337,10 @@ export class AuthService {
 
   async attachPermissionToRole(ctx: AuthzContext, roleId: string, permissionSlug: string, actorUserId: string | null): Promise<void> {
     await this.rbac.attachPermissionToRole(ctx.workspaceId, roleId, permissionSlug, actorUserId);
+  }
+
+  async detachPermissionFromRole(ctx: AuthzContext, roleId: string, permissionSlug: string): Promise<void> {
+    await this.rbac.detachPermissionFromRole(ctx.workspaceId, roleId, permissionSlug);
   }
 
   async assignRole(ctx: AuthzContext, userId: string, roleSlug: string): Promise<void> {

@@ -74,6 +74,10 @@ export class AuthStore {
     try {
       await authClient.logout();
     } finally {
+      // End the NextAuth session too — otherwise proxy.ts still sees a live session cookie and
+      // only notices the missing tokens one navigation later.
+      const { signOut } = await import("next-auth/react");
+      await signOut({ redirect: false });
       runInAction(() => {
         this.currentUser = null;
       });
@@ -84,6 +88,8 @@ export class AuthStore {
     try {
       await authClient.logoutAll();
     } finally {
+      const { signOut } = await import("next-auth/react");
+      await signOut({ redirect: false });
       runInAction(() => {
         this.currentUser = null;
       });

@@ -4,7 +4,7 @@ import { useAbility } from "@casl/react";
 import { observer } from "mobx-react-lite";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronRightIcon, LayoutDashboardIcon, ScrollTextIcon, ShieldCheckIcon, UserPlusIcon, UsersIcon } from "lucide-react";
+import { ChevronRightIcon, GlobeIcon, LanguagesIcon, LayoutDashboardIcon, ScrollTextIcon, ShieldCheckIcon, UserPlusIcon, UsersIcon, UsersRoundIcon } from "lucide-react";
 import { NavUser } from "@/components/nav-user";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
@@ -43,6 +43,36 @@ const LINKS: NavLink[] = [
     children: [
       { href: "/users", label: "All users", requires: [PERMISSIONS.usersRead] },
       { href: "/users/new", label: "Add user", requires: [PERMISSIONS.usersManage] },
+    ],
+  },
+  {
+    href: "/customers",
+    label: "Customers",
+    icon: UsersRoundIcon,
+    requires: [PERMISSIONS.customersRead],
+    children: [
+      { href: "/customers", label: "All customers", requires: [PERMISSIONS.customersRead] },
+      { href: "/customers/new", label: "Add customer", requires: [PERMISSIONS.customersManage] },
+    ],
+  },
+  {
+    href: "/countries",
+    label: "Countries",
+    icon: GlobeIcon,
+    requires: [PERMISSIONS.countriesRead],
+    children: [
+      { href: "/countries", label: "All countries", requires: [PERMISSIONS.countriesRead] },
+      { href: "/countries/new", label: "Add country", requires: [PERMISSIONS.countriesManage] },
+    ],
+  },
+  {
+    href: "/languages",
+    label: "Languages",
+    icon: LanguagesIcon,
+    requires: [PERMISSIONS.languagesRead],
+    children: [
+      { href: "/languages", label: "All languages", requires: [PERMISSIONS.languagesRead] },
+      { href: "/languages/new", label: "Add language", requires: [PERMISSIONS.languagesManage] },
     ],
   },
   { href: "/roles", label: "Roles & permissions", icon: ShieldCheckIcon, requires: ROLES_SCREEN_PERMISSIONS },

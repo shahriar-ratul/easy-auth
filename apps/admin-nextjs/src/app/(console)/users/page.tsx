@@ -4,13 +4,15 @@ import { useAbility } from "@casl/react";
 import { type ColumnDef, type PaginationState, type SortingState, getCoreRowModel, getSortedRowModel, useReactTable } from "@tanstack/react-table";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDebounce } from "use-debounce";
-import { ChevronDownIcon, EyeIcon, PlusIcon } from "lucide-react";
-import { AuthApiError, userIdOf, type UserSummary } from "@easy-auth/auth-client";
+import { ChevronDownIcon, EyeIcon, PencilIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { AuthApiError, userIdOf, type RoleSummary, type UserSummary } from "@easy-auth/auth-client";
 import { AlertModal } from "@/components/alert-modal";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { TableSkeletonLoader } from "@/components/loader/table-skeleton-loader";
 import { PermissionRequired } from "@/components/permission-required";
+import { RoleMultiSelect } from "@/components/role-multi-select";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -43,16 +45,19 @@ export default function UsersPage() {
   const canManage = hasPermission(ability, PERMISSIONS.usersManage);
   // Block and unblock are one capability used in two directions, so the catalog mints one key.
   const canBlock = hasPermission(ability, PERMISSIONS.usersBlock);
+  const canReadRoles = hasPermission(ability, PERMISSIONS.rolesManage);
 
   const [search, setSearch] = useState("");
   const [searchKey] = useDebounce(search, 500);
   const [status, setStatus] = useState<"" | "active" | "inactive">("");
+  const [roleFilter, setRoleFilter] = useState<string[]>([]);
+  const [roleCatalog, setRoleCatalog] = useState<RoleSummary[]>([]);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [pagination, setPagination] = useState<PaginationState>({ pageIndex: 0, pageSize: 20 });
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingUser, setPendingUser] = useState<UserSummary | null>(null);
-  const [pendingAction, setPendingAction] = useState<"block" | "status" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"block" | "status" | "delete" | null>(null);
   const [pendingBusy, setPendingBusy] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery({
@@ -62,21 +67,32 @@ export default function UsersPage() {
     placeholderData: keepPreviousData,
   });
 
+  useEffect(() => {
+    if (!canReadRoles) return;
+    authClient
+      .listRoles({ activeOnly: true })
+      .then(setRoleCatalog)
+      .catch((err) => toast.error(err instanceof AuthApiError ? err.message : "Couldn't load the role catalog."));
+  }, [canReadRoles]);
+
   const total = data?.meta.total ?? 0;
   const pageCount = data?.meta.pageCount ?? 0;
 
-  // The backend has no server-side `isActive` filter, so status filters only the already-fetched
-  // page — `total`/`pageCount` (and the pager) stay keyed to the unfiltered count.
+  // The backend has no server-side `isActive` or `roles` filter, so status and role both filter
+  // only the already-fetched page — `total`/`pageCount` (and the pager) stay keyed to the
+  // unfiltered count.
   const users = useMemo(() => {
-    const items = data?.items ?? [];
-    if (status === "active") return items.filter((u) => u.isActive);
-    if (status === "inactive") return items.filter((u) => !u.isActive);
+    let items = data?.items ?? [];
+    if (status === "active") items = items.filter((u) => u.isActive);
+    if (status === "inactive") items = items.filter((u) => !u.isActive);
+    if (roleFilter.length > 0) items = items.filter((u) => u.roles.some((role) => roleFilter.includes(role)));
     return items;
-  }, [data, status]);
+  }, [data, status, roleFilter]);
 
   function clearFilters() {
     setSearch("");
     setStatus("");
+    setRoleFilter([]);
     setPagination((p) => ({ ...p, pageIndex: 0 }));
   }
 
@@ -92,6 +108,12 @@ export default function UsersPage() {
     setConfirmOpen(true);
   }
 
+  function openDeleteConfirm(user: UserSummary) {
+    setPendingUser(user);
+    setPendingAction("delete");
+    setConfirmOpen(true);
+  }
+
   async function confirmPendingAction() {
     if (!pendingUser || !pendingAction) return;
     const userId = userIdOf(pendingUser);
@@ -101,17 +123,20 @@ export default function UsersPage() {
         if (pendingUser.blocked) await authClient.unblockUser(userId);
         else await authClient.blockUser(userId);
         toast.success(pendingUser.blocked ? "User unblocked." : "User blocked.");
-      } else {
+      } else if (pendingAction === "status") {
         if (pendingUser.isActive) await authClient.deactivateUser(userId);
         else await authClient.activateUser(userId);
         toast.success(pendingUser.isActive ? "User deactivated." : "User activated.");
+      } else {
+        await authClient.deleteUser(userId);
+        toast.success("Account deleted.");
       }
       setConfirmOpen(false);
       setPendingUser(null);
       setPendingAction(null);
       await refetch();
     } catch (err) {
-      toast.error(err instanceof AuthApiError ? err.message : "Couldn't change this user's status. Try again.");
+      toast.error(err instanceof AuthApiError ? err.message : "That action failed. Try again.");
     } finally {
       setPendingBusy(false);
     }
@@ -175,6 +200,17 @@ export default function UsersPage() {
         },
       },
       {
+        id: "lastLogin",
+        header: "Last login",
+        accessorFn: (user) => user.lastLogin ?? "",
+        cell: ({ row }) =>
+          row.original.lastLogin ? (
+            <span className="text-xs text-muted-foreground">{new Date(row.original.lastLogin).toLocaleString()}</span>
+          ) : (
+            <span className="text-xs text-muted-foreground">Never</span>
+          ),
+      },
+      {
         id: "created",
         header: "Created",
         accessorFn: (user) => user.createdAt,
@@ -206,6 +242,26 @@ export default function UsersPage() {
               </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
+                  <Link
+                    href={`/users/${userId}/edit`}
+                    aria-disabled={!canManage}
+                    className={cn(buttonVariants({ variant: "outline", size: "icon" }), !canManage && "pointer-events-none opacity-50")}
+                  >
+                    <PencilIcon />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>{canManage ? "Edit user" : missingPermissionHint(PERMISSIONS.usersManage)}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button size="icon" variant="outline" disabled={!canManage} onClick={() => openDeleteConfirm(user)}>
+                    <Trash2Icon />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{canManage ? "Delete user" : missingPermissionHint(PERMISSIONS.usersManage)}</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
                   <Button size="sm" variant={user.blocked ? "outline" : "destructive"} disabled={!canBlock} onClick={() => openBlockConfirm(user)}>
                     {user.blocked ? "Unblock" : "Block"}
                   </Button>
@@ -217,7 +273,7 @@ export default function UsersPage() {
         },
       },
     ],
-    [canBlock],
+    [canBlock, canManage],
   );
 
   const table = useReactTable({
@@ -237,6 +293,8 @@ export default function UsersPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Breadcrumb items={[{ title: "Users", href: "/users" }]} />
+
       <AlertModal
         isOpen={confirmOpen}
         onClose={() => setConfirmOpen(false)}
@@ -247,9 +305,11 @@ export default function UsersPage() {
             ? pendingUser?.blocked
               ? "This unblocks the account — they can sign in again immediately."
               : "This blocks the account everywhere, immediately."
-            : pendingUser?.isActive
-              ? "This deactivates the account — they can sign in again once reactivated."
-              : "This reactivates the account, immediately."
+            : pendingAction === "status"
+              ? pendingUser?.isActive
+                ? "This deactivates the account — they can sign in again once reactivated."
+                : "This reactivates the account, immediately."
+              : "This soft-deletes the account: it stops appearing in listings and can no longer sign in, but the row is kept for audit purposes."
         }
       />
 
@@ -266,7 +326,7 @@ export default function UsersPage() {
         <CardContent className="flex flex-col gap-4">
           {isError && <p className="text-sm text-destructive">{error instanceof AuthApiError ? error.message : "Couldn't load users. Try again."}</p>}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Input
               placeholder="Search by email…"
               value={search}
@@ -285,7 +345,8 @@ export default function UsersPage() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-            <Button variant="outline" disabled={!search && !status} onClick={clearFilters}>
+            {canReadRoles && <RoleMultiSelect roles={roleCatalog} selected={roleFilter} onChange={setRoleFilter} placeholder="Filter by role…" />}
+            <Button variant="outline" disabled={!search && !status && roleFilter.length === 0} onClick={clearFilters}>
               Clear
             </Button>
           </div>
@@ -319,9 +380,10 @@ export default function UsersPage() {
                 { header: "User", skeletonType: "avatar" },
                 { header: "Roles", skeletonType: "badge", skeletonCount: 2 },
                 { header: "Status", width: "w-[100px]", skeletonType: "button" },
+                { header: "Last login", skeletonType: "text", skeletonWidth: "w-32" },
                 { header: "Created", skeletonType: "text", skeletonWidth: "w-24" },
                 { header: "Updated", skeletonType: "text", skeletonWidth: "w-24" },
-                { header: "Actions", width: "w-[150px]", skeletonType: "actions", skeletonCount: 2 },
+                { header: "Actions", width: "w-[220px]", skeletonType: "actions", skeletonCount: 4 },
               ]}
               rows={pagination.pageSize > 10 ? 10 : pagination.pageSize}
             />

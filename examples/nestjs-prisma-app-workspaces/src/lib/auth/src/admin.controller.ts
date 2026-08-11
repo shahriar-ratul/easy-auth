@@ -80,6 +80,7 @@ export class AdminController {
         displayName: optionalString(body.displayName),
         phone: optionalString(body.phone),
         username: optionalString(body.username),
+        photo: optionalString(body.photo),
         roles: Array.isArray(body.roles) ? body.roles.filter((role): role is string => typeof role === "string") : undefined,
       },
       req.auth!.sub,
@@ -171,9 +172,10 @@ export class AdminController {
     description:
       "Grouped and ordered for a permission matrix. The catalog is global, like the Permission table: what is scoped to this workspace is which of its roles and memberships point at each row.",
   })
+  @ApiQuery({ name: "activeOnly", required: false, type: Boolean, description: "Pass true for a picker/dropdown — false or omitted returns everything, active or not." })
   @ApiResponse({ status: 200, type: PermissionListResponseDto })
-  async listPermissions() {
-    return this.auth.listPermissions();
+  async listPermissions(@Query("activeOnly") activeOnly?: string) {
+    return this.auth.listPermissions(activeOnly === "true");
   }
 
   @Post("permissions")
@@ -205,9 +207,10 @@ export class AdminController {
   @Get("roles")
   @CheckAbility("roles:manage")
   @ApiOperation({ summary: "[admin] List the roles this workspace defines" })
+  @ApiQuery({ name: "activeOnly", required: false, type: Boolean, description: "Pass true for a picker/dropdown — false or omitted returns everything, active or not." })
   @ApiResponse({ status: 200, type: RoleListResponseDto })
-  async listRoles(@Req() req: Request) {
-    return this.auth.listRoles(req.authz!);
+  async listRoles(@Req() req: Request, @Query("activeOnly") activeOnly?: string) {
+    return this.auth.listRoles(req.authz!, activeOnly === "true");
   }
 
   @Post("roles")
@@ -270,6 +273,17 @@ export class AdminController {
   @ApiResponse({ status: 201, type: OkResponseDto })
   async attachPermissionToRole(@Param("roleId") roleId: string, @Body() body: Record<string, unknown>, @Req() req: Request) {
     await this.auth.attachPermissionToRole(req.authz!, roleId, requireString(body.permission, "permission"), req.auth!.sub);
+    return { ok: true };
+  }
+
+  @Post("roles/:roleId/permissions/:permissionSlug/revoke")
+  @CheckAbility("roles:manage")
+  @ApiOperation({ summary: "[admin] Detach a permission from one of this workspace's roles" })
+  @ApiParam({ name: "roleId" })
+  @ApiParam({ name: "permissionSlug" })
+  @ApiResponse({ status: 201, type: OkResponseDto })
+  async detachPermissionFromRole(@Param("roleId") roleId: string, @Param("permissionSlug") permissionSlug: string, @Req() req: Request) {
+    await this.auth.detachPermissionFromRole(req.authz!, roleId, permissionSlug);
     return { ok: true };
   }
 

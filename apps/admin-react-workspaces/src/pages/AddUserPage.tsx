@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { PERMISSIONS, useAbility } from "@/lib/ability";
 import { authClient } from "@/lib/auth-client";
 import { useWorkspaceStore } from "@/stores/store-context";
+import { PhotoUpload } from "@/components/photo-upload";
 import { RoleMultiSelect } from "@/components/role-multi-select";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,6 +25,7 @@ export const AddUserPage = observer(function AddUserPage() {
   const canReadRoles = ability.can(PERMISSIONS.rolesManage, "permission");
 
   const [form, setForm] = useState(emptyForm);
+  const [photo, setPhoto] = useState<string | null>(null);
   const [roles, setRoles] = useState<RoleSummary[]>([]);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [manualRoles, setManualRoles] = useState("");
@@ -31,11 +33,13 @@ export const AddUserPage = observer(function AddUserPage() {
 
   // Roles are per workspace, same as `RolesPage`: switching has to re-fetch the catalog this
   // picker offers, or it could show one workspace's roles while creating a member of another.
+  // Filtered to active roles, same as the permission grid on RolesPage, so the picker doesn't
+  // offer a retired role.
   useEffect(() => {
     setRoles([]);
     if (!canReadRoles) return;
     authClient
-      .listRoles()
+      .listRoles({ activeOnly: true })
       .then(setRoles)
       .catch((err) => toast.error(err instanceof AuthApiError ? err.message : "Couldn't load the role catalog."));
   }, [canReadRoles, activeWorkspaceId]);
@@ -58,6 +62,7 @@ export const AddUserPage = observer(function AddUserPage() {
         displayName: form.displayName || undefined,
         phone: form.phone || undefined,
         username: form.username || undefined,
+        photo: photo || undefined,
         roles: roleSlugs.length > 0 ? roleSlugs : undefined,
       };
       // No scope argument: the client sends the active workspace's `X-Workspace-Id` by default,
@@ -86,6 +91,11 @@ export const AddUserPage = observer(function AddUserPage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Photo</Label>
+              <PhotoUpload photo={photo} fallback="?" onChange={(next) => setPhoto(next)} />
+            </div>
+
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="email">Email</Label>

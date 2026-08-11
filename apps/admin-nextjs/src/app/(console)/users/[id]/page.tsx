@@ -2,16 +2,18 @@
 
 import { useAbility } from "@casl/react";
 import { observer } from "mobx-react-lite";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { AuthApiError, userIdOf, type RoleSummary, type UpdateUserInput, type UserSummary } from "@easy-auth/auth-client";
+import { AuthApiError, type UserSummary } from "@easy-auth/auth-client";
+import { PencilIcon } from "lucide-react";
 import { toast } from "sonner";
+import { Breadcrumb } from "@/components/breadcrumb";
 import { PermissionRequired } from "@/components/permission-required";
-import { PhotoUpload } from "@/components/photo-upload";
-import { RoleMultiSelect } from "@/components/role-multi-select";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -21,43 +23,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { PERMISSIONS, hasPermission, missingPermissionHint, type AppAbility } from "@/lib/ability";
 import { authClient } from "@/lib/auth-client";
 import { useAuthStore } from "@/lib/stores/store-context";
 
 function apiErrorMessage(err: unknown, fallback: string): string {
   return err instanceof AuthApiError ? err.message : fallback;
-}
-
-type ProfileForm = {
-  firstName: string;
-  lastName: string;
-  displayName: string;
-  phone: string;
-  username: string;
-};
-
-function toForm(user: UserSummary): ProfileForm {
-  return {
-    firstName: user.firstName ?? "",
-    lastName: user.lastName ?? "",
-    displayName: user.displayName ?? "",
-    phone: user.phone ?? "",
-    username: user.username ?? "",
-  };
-}
-
-/** Empty string means "clear the field" (`null`), matching `UpdateUserInput`'s nullable fields. */
-function toInput(form: ProfileForm): UpdateUserInput {
-  return {
-    firstName: form.firstName || null,
-    lastName: form.lastName || null,
-    displayName: form.displayName || null,
-    phone: form.phone || null,
-    username: form.username || null,
-  };
 }
 
 function initialsOf(user: UserSummary): string {
@@ -72,6 +43,15 @@ function initialsOf(user: UserSummary): string {
   );
 }
 
+function field(label: string, value: string | null) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-sm">{value || "—"}</span>
+    </div>
+  );
+}
+
 const UserDetailPage = observer(function UserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
@@ -80,27 +60,17 @@ const UserDetailPage = observer(function UserDetailPage() {
   const canRead = hasPermission(ability, PERMISSIONS.usersRead);
   const canManage = hasPermission(ability, PERMISSIONS.usersManage);
   const canBlock = hasPermission(ability, PERMISSIONS.usersBlock);
-  const canReadRoles = hasPermission(ability, PERMISSIONS.rolesManage);
-  const canAssignRoles = hasPermission(ability, PERMISSIONS.rolesAssign);
 
   const [user, setUser] = useState<UserSummary | null>(null);
-  const [form, setForm] = useState<ProfileForm | null>(null);
   const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
-
-  const [roleCatalog, setRoleCatalog] = useState<RoleSummary[]>([]);
-  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
-  const [savingRoles, setSavingRoles] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const result = await authClient.getUser(id);
       setUser(result);
-      setForm(toForm(result));
-      setSelectedRoles(result.roles);
     } catch (err) {
       toast.error(apiErrorMessage(err, "Couldn't load this user."));
     } finally {
@@ -113,62 +83,9 @@ const UserDetailPage = observer(function UserDetailPage() {
     void load();
   }, [canRead, load]);
 
-  useEffect(() => {
-    if (!canReadRoles) return;
-    authClient
-      .listRoles()
-      .then(setRoleCatalog)
-      .catch((err) => toast.error(apiErrorMessage(err, "Couldn't load the role catalog.")));
-  }, [canReadRoles]);
-
   if (!canRead) return <PermissionRequired permission={PERMISSIONS.usersRead} what="User details" />;
 
   const isSelf = authStore.currentUser?.sub === id;
-
-  async function handleSave(event: React.FormEvent) {
-    event.preventDefault();
-    if (!form) return;
-    setSaving(true);
-    try {
-      const updated = await authClient.updateUser(id, toInput(form));
-      setUser(updated);
-      setForm(toForm(updated));
-      toast.success("Profile saved.");
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Couldn't save this profile. Try again."));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handlePhotoChange(photo: string | null) {
-    try {
-      const updated = await authClient.updateUser(id, { photo });
-      setUser(updated);
-      toast.success(photo ? "Photo updated." : "Photo removed.");
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Couldn't update the photo. Try again."));
-    }
-  }
-
-  /** No bulk "set roles" endpoint — diffs against the loaded roles and assigns/revokes only the delta. */
-  async function handleSaveRoles() {
-    if (!user) return;
-    const toAssign = selectedRoles.filter((slug) => !user.roles.includes(slug));
-    const toRevoke = user.roles.filter((slug) => !selectedRoles.includes(slug));
-    if (toAssign.length === 0 && toRevoke.length === 0) return;
-    setSavingRoles(true);
-    try {
-      await Promise.all([...toAssign.map((slug) => authClient.assignRole(id, slug)), ...toRevoke.map((slug) => authClient.revokeRole(id, slug))]);
-      setUser((prev) => (prev ? { ...prev, roles: selectedRoles } : prev));
-      toast.success("Roles updated.");
-    } catch (err) {
-      toast.error(apiErrorMessage(err, "Couldn't update roles. Try again."));
-      setSelectedRoles(user.roles);
-    } finally {
-      setSavingRoles(false);
-    }
-  }
 
   async function toggleBlock() {
     if (!user) return;
@@ -209,104 +126,62 @@ const UserDetailPage = observer(function UserDetailPage() {
 
   return (
     <div className="flex flex-col gap-4">
+      <Breadcrumb items={[{ title: "Users", href: "/users" }, { title: user?.email ?? "Details", href: `/users/${id}` }]} />
+
       {loading && !user && <p className="text-sm text-muted-foreground">Loading…</p>}
 
-      {user && form && (
+      {user && (
         <>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>{user.email}</CardTitle>
-              <div className="flex gap-1.5">
+              <div>
+                <CardTitle>{user.email}</CardTitle>
+                <CardDescription>
+                  Last login: {user.lastLogin ? new Date(user.lastLogin).toLocaleString() : "Never"} · Created:{" "}
+                  {new Date(user.createdAt).toLocaleDateString()} · Updated: {new Date(user.updatedAt).toLocaleDateString()}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-1.5">
                 <Badge variant={user.isActive ? "success" : "destructive"}>{user.isActive ? "Active" : "Inactive"}</Badge>
                 {user.blocked && <Badge variant="destructive">Blocked</Badge>}
+                <Link
+                  href={`/users/${id}/edit`}
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  title={canManage ? undefined : missingPermissionHint(PERMISSIONS.usersManage)}
+                  aria-disabled={!canManage}
+                  onClick={(e) => !canManage && e.preventDefault()}
+                >
+                  <PencilIcon />
+                  Edit
+                </Link>
               </div>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <PhotoUpload
-                photo={user.photo}
-                fallback={initialsOf(user)}
-                disabled={!canManage}
-                onChange={handlePhotoChange}
-              />
+              <Avatar className="size-16">
+                {user.photo && <AvatarImage src={user.photo} alt="" className="object-cover" />}
+                <AvatarFallback className="text-base">{initialsOf(user)}</AvatarFallback>
+              </Avatar>
 
               <div className="flex flex-col gap-1.5">
-                <Label>Roles</Label>
-                {canReadRoles ? (
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
-                    <div className="max-w-xs flex-1">
-                      <RoleMultiSelect roles={roleCatalog} selected={selectedRoles} onChange={setSelectedRoles} disabled={!canAssignRoles} />
-                    </div>
-                    {canAssignRoles && (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        disabled={savingRoles || JSON.stringify([...selectedRoles].sort()) === JSON.stringify([...user.roles].sort())}
-                        onClick={() => void handleSaveRoles()}
-                      >
-                        {savingRoles ? "Saving…" : "Save roles"}
-                      </Button>
-                    )}
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {user.roles.length === 0 && <span className="text-xs text-muted-foreground">No roles</span>}
-                    {user.roles.map((role) => (
-                      <Badge key={role} variant="outline">
-                        {role}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
+                <span className="text-xs text-muted-foreground">Roles</span>
+                <div className="flex flex-wrap gap-1">
+                  {user.roles.length === 0 && <span className="text-sm text-muted-foreground">No roles</span>}
+                  {user.roles.map((role) => (
+                    <Badge key={role} variant="outline">
+                      {role}
+                    </Badge>
+                  ))}
+                </div>
               </div>
 
-              <form onSubmit={handleSave} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="firstName">First name</Label>
-                  <Input
-                    id="firstName"
-                    disabled={!canManage}
-                    value={form.firstName}
-                    onChange={(e) => setForm({ ...form, firstName: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="lastName">Last name</Label>
-                  <Input
-                    id="lastName"
-                    disabled={!canManage}
-                    value={form.lastName}
-                    onChange={(e) => setForm({ ...form, lastName: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="displayName">Display name</Label>
-                  <Input
-                    id="displayName"
-                    disabled={!canManage}
-                    value={form.displayName}
-                    onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="username">Username</Label>
-                  <Input
-                    id="username"
-                    disabled={!canManage}
-                    value={form.username}
-                    onChange={(e) => setForm({ ...form, username: e.target.value })}
-                  />
-                </div>
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" disabled={!canManage} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
-                </div>
-                <div className="flex items-end">
-                  <Button type="submit" disabled={!canManage || saving} title={canManage ? undefined : missingPermissionHint(PERMISSIONS.usersManage)}>
-                    {saving ? "Saving…" : "Save changes"}
-                  </Button>
-                </div>
-              </form>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {field("First name", user.firstName)}
+                {field("Last name", user.lastName)}
+                {field("Display name", user.displayName)}
+                {field("Username", user.username)}
+                {field("Phone", user.phone)}
+                {field("Two-factor authentication", user.twoFactorEnabled ? "Enabled" : "Disabled")}
+              </div>
             </CardContent>
           </Card>
 
