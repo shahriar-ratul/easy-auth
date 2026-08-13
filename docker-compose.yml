@@ -28,6 +28,10 @@ services:
       # an already-set process env var, so this wins.
       DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_prisma?schema=public
       PORT: "3001"
+      # Fixed per-service secret for this local reference deployment (same convenience
+      # tradeoff as postgres's trust auth above) — generate your own for anything real:
+      # openssl rand -base64 32
+      AUTH_JWT_SECRET: ms4RNzoPac7X1/OM1w2ooPI1cVsuWcghDb0XbDsM6x8=
     ports:
       - "3001:3001"
     depends_on:
@@ -41,6 +45,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_drizzle?schema=public
       PORT: "3002"
+      AUTH_JWT_SECRET: YIB1qdLNcAGWu3ta3gVfd4BWKwoNxmCpMEaF25cH4B0=
     ports:
       - "3002:3002"
     depends_on:
@@ -54,6 +59,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_express_prisma?schema=public
       PORT: "3003"
+      AUTH_JWT_SECRET: HEbya7VhkJWO9fnWDj/AAgNQcTXWSzPz7R33p/yv7Gk=
     ports:
       - "3003:3003"
     depends_on:
@@ -67,6 +73,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_express_drizzle?schema=public
       PORT: "3004"
+      AUTH_JWT_SECRET: 80MyNoClzMesH5RVKfxPH+XL0CLuZcEdXBKBX9UTEKw=
     ports:
       - "3004:3004"
     depends_on:
@@ -82,6 +89,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_prisma_workspaces?schema=public
       PORT: "3005"
+      AUTH_JWT_SECRET: qVOU5GsqVy/z7O/EGbynu5ZSnfhjDo51K7NJS6zKluA=
     ports:
       - "3005:3005"
     depends_on:
@@ -95,6 +103,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_nestjs_drizzle_workspaces?schema=public
       PORT: "3006"
+      AUTH_JWT_SECRET: 440w8Vb/bObhUV03izgK53/2Feo/6S9mN5rtOjOL/Cw=
     ports:
       - "3006:3006"
     depends_on:
@@ -108,6 +117,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_express_prisma_workspaces?schema=public
       PORT: "3007"
+      AUTH_JWT_SECRET: kG3VqOdGYVn5A9Z7s0yemKjy335r4MnH7k7YyXuWFZk=
     ports:
       - "3007:3007"
     depends_on:
@@ -121,6 +131,7 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres@postgres:5432/example_express_drizzle_workspaces?schema=public
       PORT: "3008"
+      AUTH_JWT_SECRET: /4KBg5sEYyQx/MJu/smoigzLnyNoWQoPIxfO1baEkro=
     ports:
       - "3008:3008"
     depends_on:

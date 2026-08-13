@@ -28,3 +28,4 @@ coverage/
 
 # OS/editor cruft
 .DS_Store
+.vscode
